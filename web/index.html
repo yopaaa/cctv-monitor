@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CCTV Monitor</title>
+    <link rel="stylesheet" href="css/style.css?v=2.0.1">
+    <!-- HLS.js — untuk memutar HLS stream di browser (murni HTTP, tanpa WebSocket) -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+</head>
+<body>
+    <!-- Header / Toolbar -->
+    <header class="toolbar">
+        <div class="toolbar-left">
+            <h1>📹 CCTV Monitor</h1>
+        </div>
+        <div class="toolbar-right">
+            <label for="grid-select">Grid:</label>
+            <select id="grid-select">
+                <option value="auto">Auto</option>
+                <option value="1">1×1</option>
+                <option value="2">2×2</option>
+                <option value="3" selected>3×3</option>
+                <option value="4">4×4</option>
+            </select>
+            <span id="status-indicator" class="status-dot offline" title="Memuat..."></span>
+            <div id="user-profile" class="user-profile hidden">
+                <span id="user-email-badge" class="user-email-badge">👤 admin</span>
+                <button id="logout-btn" class="logout-btn" title="Keluar">🚪 Keluar</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Camera Grid -->
+    <main id="camera-grid" class="camera-grid grid-3">
+        <div class="loading">Memuat daftar kamera...</div>
+    </main>
+
+    <!-- Modal Overlay (Live stream & controls) -->
+    <div id="modal-overlay" class="modal-overlay hidden">
+        <div class="modal-container">
+            <div class="modal-header">
+                <span id="modal-cam-name" class="modal-cam-name">Kamera</span>
+                <div class="modal-header-actions">
+                    <span id="modal-cam-status" class="camera-status"></span>
+                    <button id="modal-close" class="modal-btn" title="Tutup">✕</button>
+                </div>
+            </div>
+            <div class="modal-video-wrapper">
+                <video id="modal-video" muted autoplay playsinline></video>
+            </div>
+            <div class="modal-controls">
+                <button id="modal-alarm" class="modal-btn alarm-btn">🔊 Alarm</button>
+                <div class="modal-controls-spacer"></div>
+                <button id="modal-snapshot" class="modal-btn">📷 Snapshot</button>
+                <button id="modal-fullscreen" class="modal-btn">⛶ Fullscreen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Overlay Screen -->
+    <div id="login-overlay" class="login-overlay hidden">
+        <div class="login-card">
+            <div class="login-icon">🔒</div>
+            <h2>CCTV Security Login</h2>
+            <p class="login-subtitle">Akses sistem live monitoring CCTV</p>
+
+            <div class="login-user-box">
+                <span class="login-user-icon">👤</span>
+                <div class="login-user-info">
+                    <span class="login-user-label">Pengguna / Email:</span>
+                    <span id="login-email-display" class="login-user-value">admin</span>
+                </div>
+            </div>
+
+            <form id="login-form">
+                <div class="input-group">
+                    <input type="password" id="login-password" placeholder="Masukkan Password..." autocomplete="current-password" required>
+                </div>
+                <div id="login-error" class="login-error hidden"></div>
+                <button type="submit" id="login-submit-btn" class="login-submit-btn">
+                    <span>Masuk</span> ➔
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script src="js/app.js?v=2.0.1"></script>
+</body>
+</html>

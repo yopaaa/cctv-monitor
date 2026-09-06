@@ -1,0 +1,9 @@
+services:
+  cctv-monitor:
+    image: llabbs/cctv-monitor:latest
+    container_name: cctv-monitor
+    restart: unless-stopped
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    # Agar container bisa akses kamera di jaringan lokal
+    network_mode: host

@@ -1,0 +1,10 @@
+  # Build
+    docker build -t llabbs/cctv-monitor:latest .
+  
+    # Push
+    docker push llabbs/cctv-monitor:latest
+  
+  Kalau mau sekalian tag versi:
+  
+    docker tag llabbs/cctv-monitor:latest llabbs/cctv-monitor:v1.0
+    docker push llabbs/cctv-monitor:v1.0 

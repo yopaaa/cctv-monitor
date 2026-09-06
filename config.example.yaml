@@ -1,0 +1,50 @@
+# CCTV Monitor Configuration
+# ===========================
+# Edit file ini sesuai dengan konfigurasi CCTV Anda.
+
+server:
+  port: 8080
+  streams_dir: "./streams"
+
+# ============================================
+# AUTENTIKASI / LOGIN DASHBOARD
+# ============================================
+# Aktifkan password agar stream tidak bisa diakses orang lain.
+# Email / username bisa dimasukkan di URL (contoh: /yopa@gmail.com atau ?email=yopa@gmail.com).
+# Form login hanya akan meminta input Password!
+auth:
+  enabled: true
+  password: "adminpassword"   # GANTI PASSWORD ANDA DI SINI!
+  email: "admin@cctv.local"   # Default email/nama jika tidak disertakan di URL
+
+cameras:
+  # ============================================
+  # Kamera V380 — Format RTSP URL yang umum:
+  #
+  #   Main stream (HD):  rtsp://admin:password@IP:554/live/ch00_0
+  #   Sub stream (SD):   rtsp://admin:password@IP:554/live/ch00_1
+  # ============================================
+
+  - id: cam1
+    name: "Kamera Depan"
+    url: "rtsp://admin:password@192.168.1.100:554/live/ch00_1"
+    username: "admin"
+    password: "password"
+    onvif_url: "http://192.168.1.100:80"
+
+    alarm:
+      method: "http_get"
+      on_url: "http://192.168.1.100/cgi-bin/hi3510/param.cgi?cmd=setalarmsoundattr&-alarm_mode=1"
+      off_url: "http://192.168.1.100/cgi-bin/hi3510/param.cgi?cmd=setalarmsoundattr&-alarm_mode=0"
+
+  # Tambahkan kamera lainnya di bawah ini:
+  # - id: cam2
+  #   name: "Kamera Belakang"
+  #   url: "rtsp://admin:password@192.168.1.101:554/live/ch00_1"
+  #   username: "admin"
+  #   password: "password"
+  #   onvif_url: "http://192.168.1.101:80"
+  #   alarm:
+  #     method: "http_get"
+  #     on_url: "http://192.168.1.101/cgi-bin/hi3510/param.cgi?cmd=setalarmsoundattr&-alarm_mode=1"
+  #     off_url: "http://192.168.1.101/cgi-bin/hi3510/param.cgi?cmd=setalarmsoundattr&-alarm_mode=0"
