@@ -37,50 +37,74 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 20px;
+    padding: 8px 16px;
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-color);
     position: sticky;
     top: 0;
     z-index: 100;
+    min-height: 52px;
+    gap: 12px;
+    box-sizing: border-box;
 }
 
-.toolbar h1 {
-    font-size: 1.2rem;
+.toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex-shrink: 1;
+}
+
+.toolbar-title {
+    font-size: 1.1rem;
     font-weight: 600;
     color: var(--accent);
+    margin: 0;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .toolbar-right {
     display: flex;
     align-items: center;
     gap: 10px;
+    flex-shrink: 0;
 }
 
-.toolbar-right label {
+.grid-selector-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.grid-label {
     font-size: 0.85rem;
     color: var(--text-secondary);
 }
 
-.toolbar-right select {
+.grid-select {
     background: var(--bg-card);
     color: var(--text-primary);
     border: 1px solid var(--border-color);
-    border-radius: 4px;
+    border-radius: 6px;
     padding: 4px 8px;
     font-size: 0.85rem;
     cursor: pointer;
+    outline: none;
 }
 
-.toolbar-right select:focus {
-    outline: 1px solid var(--accent);
+.grid-select:focus {
+    border-color: var(--accent);
 }
 
 /* ========== Status Dot ========== */
 
 .status-dot {
-    width: 10px;
-    height: 10px;
+    width: 9px;
+    height: 9px;
     border-radius: 50%;
     display: inline-block;
     flex-shrink: 0;
@@ -413,6 +437,52 @@ body {
 
 /* ========== Responsive ========== */
 
+/* ========== User Profile & Logout in Toolbar ========== */
+
+.user-profile {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-left: 10px;
+    border-left: 1px solid var(--border-color);
+}
+
+.user-email-badge {
+    font-size: 0.8rem;
+    color: var(--accent);
+    background: rgba(79, 195, 247, 0.1);
+    border: 1px solid rgba(79, 195, 247, 0.25);
+    padding: 3px 8px;
+    border-radius: 6px;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.logout-btn {
+    background: rgba(244, 67, 54, 0.15);
+    border: 1px solid rgba(244, 67, 54, 0.3);
+    color: #ff7961;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.logout-btn:hover {
+    background: rgba(244, 67, 54, 0.3);
+    color: #fff;
+}
+
+/* ========== Responsive Breakpoints ========== */
+
 @media (max-width: 1024px) {
     .camera-grid.grid-3 {
         grid-template-columns: repeat(2, 1fr);
@@ -423,14 +493,16 @@ body {
 }
 
 @media (max-width: 768px) {
-    .toolbar h1 {
+    .toolbar {
+        padding: 6px 12px;
+        min-height: 48px;
+    }
+
+    .toolbar-title {
         font-size: 1rem;
     }
 
-    .camera-grid.grid-auto {
-        grid-template-columns: 1fr;
-    }
-
+    .camera-grid.grid-auto,
     .camera-grid.grid-2,
     .camera-grid.grid-3,
     .camera-grid.grid-4 {
@@ -442,44 +514,92 @@ body {
     }
 }
 
-/* ========== User Profile & Logout in Toolbar ========== */
+/* Tampilan Khusus Smartphone (HP) */
+@media (max-width: 600px) {
+    .toolbar {
+        padding: 6px 10px;
+        gap: 6px;
+    }
 
-.user-profile {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-left: 6px;
-    padding-left: 8px;
-    border-left: 1px solid var(--border-color);
+    .toolbar-left {
+        gap: 6px;
+    }
+
+    .toolbar-title {
+        font-size: 0.92rem;
+    }
+
+    /* Di layar HP sembunyikan dropdown pilihan grid karena HP selalu 1 kolom */
+    .grid-selector-group {
+        display: none;
+    }
+
+    .toolbar-right {
+        gap: 6px;
+    }
+
+    .user-profile {
+        padding-left: 0;
+        border-left: none;
+        gap: 5px;
+    }
+
+    .user-email-badge {
+        font-size: 0.72rem;
+        max-width: 95px;
+        padding: 3px 6px;
+    }
+
+    .logout-btn {
+        padding: 4px 8px;
+        font-size: 0.72rem;
+    }
+
+    .logout-text {
+        display: none; /* Di HP hanya tampilkan icon pintu keluar 🚪 agar ringkas */
+    }
+
+    /* Modal di HP */
+    .modal-overlay {
+        padding: 6px;
+    }
+
+    .modal-container {
+        border-radius: 8px;
+    }
+
+    .modal-header {
+        padding: 8px 10px;
+    }
+
+    .modal-cam-name {
+        font-size: 0.9rem;
+        max-width: 140px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .modal-controls {
+        padding: 8px 10px;
+        gap: 6px;
+    }
+
+    .modal-btn {
+        padding: 6px 10px;
+        font-size: 0.75rem;
+    }
 }
 
-.user-email-badge {
-    font-size: 0.8rem;
-    color: var(--accent);
-    background: rgba(79, 195, 247, 0.1);
-    border: 1px solid rgba(79, 195, 247, 0.25);
-    padding: 3px 8px;
-    border-radius: 4px;
-    max-width: 160px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
+/* Layar HP Sangat Kecil (< 360px) */
+@media (max-width: 360px) {
+    .toolbar-title .title-text {
+        display: none; /* Hanya icon 📹 */
+    }
 
-.logout-btn {
-    background: rgba(244, 67, 54, 0.15);
-    border: 1px solid rgba(244, 67, 54, 0.3);
-    color: #ff7961;
-    padding: 3px 8px;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.logout-btn:hover {
-    background: rgba(244, 67, 54, 0.3);
-    color: #fff;
+    .user-email-badge {
+        max-width: 70px;
+    }
 }
 
 /* ========== Login Overlay ========== */

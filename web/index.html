@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CCTV Monitor</title>
-    <link rel="stylesheet" href="css/style.css?v=2.0.1">
+    <link rel="stylesheet" href="css/style.css?v=2.0.2">
     <!-- HLS.js — untuk memutar HLS stream di browser (murni HTTP, tanpa WebSocket) -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
 </head>
@@ -12,21 +12,26 @@
     <!-- Header / Toolbar -->
     <header class="toolbar">
         <div class="toolbar-left">
-            <h1>📹 CCTV Monitor</h1>
+            <span id="status-indicator" class="status-dot offline" title="Memuat..."></span>
+            <h1 class="toolbar-title"><span class="title-icon">📹</span> <span class="title-text">CCTV Monitor</span></h1>
         </div>
         <div class="toolbar-right">
-            <label for="grid-select">Grid:</label>
-            <select id="grid-select">
-                <option value="auto">Auto</option>
-                <option value="1">1×1</option>
-                <option value="2">2×2</option>
-                <option value="3" selected>3×3</option>
-                <option value="4">4×4</option>
-            </select>
-            <span id="status-indicator" class="status-dot offline" title="Memuat..."></span>
+            <div class="grid-selector-group">
+                <label for="grid-select" class="grid-label">Grid:</label>
+                <select id="grid-select" class="grid-select">
+                    <option value="auto">Auto</option>
+                    <option value="1">1×1</option>
+                    <option value="2">2×2</option>
+                    <option value="3" selected>3×3</option>
+                    <option value="4">4×4</option>
+                </select>
+            </div>
             <div id="user-profile" class="user-profile hidden">
-                <span id="user-email-badge" class="user-email-badge">👤 admin</span>
-                <button id="logout-btn" class="logout-btn" title="Keluar">🚪 Keluar</button>
+                <span id="user-email-badge" class="user-email-badge" title="Pengguna aktif">👤 admin</span>
+                <button id="logout-btn" class="logout-btn" title="Keluar">
+                    <span class="logout-icon">🚪</span>
+                    <span class="logout-text">Keluar</span>
+                </button>
             </div>
         </div>
     </header>
@@ -85,6 +90,6 @@
         </div>
     </div>
 
-    <script src="js/app.js?v=2.0.1"></script>
+    <script src="js/app.js?v=2.0.2"></script>
 </body>
 </html>
