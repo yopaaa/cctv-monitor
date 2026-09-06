@@ -339,6 +339,25 @@ body {
     display: block;
 }
 
+.modal-video-wrapper:fullscreen,
+.modal-video-wrapper:-webkit-full-screen {
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+    background: #000 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+.modal-video-wrapper:fullscreen video,
+.modal-video-wrapper:-webkit-full-screen video {
+    width: 100vw !important;
+    height: 100vh !important;
+    object-fit: contain !important;
+}
+
 /* Loading spinner inside modal */
 .modal-loading {
     position: absolute;

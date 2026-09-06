@@ -603,14 +603,93 @@
         takeSnapshot();
     });
 
+    function isMobileDevice() {
+        return (
+            /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ||
+            window.matchMedia("(max-width: 768px)").matches ||
+            ("ontouchstart" in window && window.innerWidth <= 1024)
+        );
+    }
+
+    function toggleFullscreen() {
+        var container = document.querySelector(".modal-video-wrapper");
+        var video = document.getElementById("modal-video");
+
+        var isFullscreen =
+            document.fullscreenElement ||
+            document.webkitFullscreenElement ||
+            document.mozFullScreenElement ||
+            document.msFullscreenElement;
+
+        if (isFullscreen) {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            }
+            if (screen.orientation && screen.orientation.unlock) {
+                try {
+                    screen.orientation.unlock();
+                } catch (e) {}
+            }
+        } else {
+            var isMobile = isMobileDevice();
+
+            // iOS Safari native video fullscreen
+            if (video && video.webkitEnterFullscreen && (!container.requestFullscreen && !container.webkitRequestFullscreen)) {
+                video.webkitEnterFullscreen();
+                return;
+            }
+
+            var reqPromise = null;
+            if (container.requestFullscreen) {
+                reqPromise = container.requestFullscreen();
+            } else if (container.webkitRequestFullscreen) {
+                reqPromise = container.webkitRequestFullscreen();
+            } else if (video && video.webkitEnterFullscreen) {
+                video.webkitEnterFullscreen();
+                return;
+            }
+
+            // Khusus HP (Mobile): Otomatis kunci ke posisi Landscape (Layar Miring)
+            if (isMobile && screen.orientation && screen.orientation.lock) {
+                if (reqPromise && reqPromise.then) {
+                    reqPromise
+                        .then(function () {
+                            return screen.orientation.lock("landscape");
+                        })
+                        .catch(function (err) {
+                            console.log("Landscape lock error / not permitted:", err);
+                        });
+                } else {
+                    try {
+                        screen.orientation.lock("landscape").catch(function () {});
+                    } catch (e) {}
+                }
+            }
+        }
+    }
+
+    function handleFullscreenChange() {
+        var isFullscreen =
+            document.fullscreenElement ||
+            document.webkitFullscreenElement;
+
+        if (!isFullscreen) {
+            if (screen.orientation && screen.orientation.unlock) {
+                try {
+                    screen.orientation.unlock();
+                } catch (e) {}
+            }
+        }
+    }
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+
     modalFullscreenBtn.addEventListener("click", function (e) {
         e.stopPropagation();
-        var container = document.querySelector(".modal-video-wrapper");
-        if (container.requestFullscreen) {
-            container.requestFullscreen();
-        } else if (container.webkitRequestFullscreen) {
-            container.webkitRequestFullscreen();
-        }
+        toggleFullscreen();
     });
 
     modalAlarmBtn.addEventListener("click", function (e) {
