@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CCTV Monitor</title>
-    <link rel="stylesheet" href="css/style.css?v=2.2.1">
+    <link rel="stylesheet" href="css/style.css?v=2.2.2">
     <!-- HLS.js — untuk memutar HLS stream di browser (murni HTTP, tanpa WebSocket) -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
 </head>
@@ -121,6 +121,11 @@
                         <video id="rec-video-player" controls playsinline preload="metadata">
                             Browser Anda tidak mendukung pemutar video HTML5.
                         </video>
+                        <div id="rec-video-loading" class="rec-video-loader hidden">
+                            <div class="spinner"></div>
+                            <span>Memuat video rekaman...</span>
+                        </div>
+                        <div id="rec-video-error" class="rec-video-error hidden"></div>
                         <div id="rec-video-empty" class="rec-video-empty">
                             <span class="empty-icon">📼</span>
                             <p>Pilih tanggal pada kalender di kiri, lalu klik klip rekaman di bawah</p>
@@ -228,6 +233,6 @@
         </div>
     </div>
 
-    <script src="js/app.js?v=2.2.1"></script>
+    <script src="js/app.js?v=2.2.2"></script>
 </body>
 </html>

@@ -72,40 +72,61 @@ func (m *Manager) GetCameras() []CameraRecordingInfo {
 		cameraCounts[cameraID]++
 	})
 
-	// Build result with friendly camera names from config if available
-	result := make([]CameraRecordingInfo, 0, len(cameraCounts))
-	nameMap := make(map[string]string)
+	result := make([]CameraRecordingInfo, 0)
+	handledIDs := make(map[string]bool)
+
+	// 1. First, prioritize and order by cameras defined in config.yaml
 	for _, cam := range m.cfg.Cameras {
-		nameMap[cam.ID] = cam.Name
-		if cam.ShinobiID != "" {
-			nameMap[cam.ShinobiID] = cam.Name
-		}
-	}
+		matchedID := ""
+		count := 0
 
-	// Sort camera IDs for consistent UI display
-	var ids []string
-	for id := range cameraCounts {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-
-	for _, id := range ids {
-		name := id
-		if friendly, ok := nameMap[id]; ok {
-			name = friendly
-		} else if id == "default" || (len(cameraCounts) == 1 && len(m.cfg.Cameras) == 1) {
-			if len(m.cfg.Cameras) > 0 {
-				name = m.cfg.Cameras[0].Name
-			} else {
-				name = "Kamera Utama"
+		if cam.ShinobiID != "" && cameraCounts[cam.ShinobiID] > 0 {
+			matchedID = cam.ShinobiID
+			count = cameraCounts[cam.ShinobiID]
+		} else if cameraCounts[cam.ID] > 0 {
+			matchedID = cam.ID
+			count = cameraCounts[cam.ID]
+		} else if cameraCounts["default"] > 0 && len(m.cfg.Cameras) == 1 {
+			matchedID = "default"
+			count = cameraCounts["default"]
+		} else if len(m.cfg.Cameras) == 1 && len(cameraCounts) == 1 {
+			// Single camera fallback
+			for id, c := range cameraCounts {
+				matchedID = id
+				count = c
+				break
 			}
 		}
 
-		result = append(result, CameraRecordingInfo{
-			ID:        id,
-			Name:      name,
-			ClipCount: cameraCounts[id],
-		})
+		if matchedID != "" && !handledIDs[matchedID] {
+			handledIDs[matchedID] = true
+			result = append(result, CameraRecordingInfo{
+				ID:        matchedID,
+				Name:      cam.Name,
+				ClipCount: count,
+			})
+		}
+	}
+
+	// 2. If no configured camera matched, fallback to listing detected camera IDs
+	if len(result) == 0 {
+		var ids []string
+		for id := range cameraCounts {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+
+		for _, id := range ids {
+			name := id
+			if id == "default" && len(m.cfg.Cameras) > 0 {
+				name = m.cfg.Cameras[0].Name
+			}
+			result = append(result, CameraRecordingInfo{
+				ID:        id,
+				Name:      name,
+				ClipCount: cameraCounts[id],
+			})
+		}
 	}
 
 	return result
@@ -283,6 +304,11 @@ func (m *Manager) scanRecordings(fn func(cameraID string, relPath string, info f
 		}
 
 		if !strings.HasSuffix(strings.ToLower(d.Name()), ".mp4") {
+			return nil
+		}
+
+		// Only include files with valid Shinobi timestamp filenames (YYYY-MM-DDTHH-mm-ss.mp4)
+		if _, _, _, ok := parseShinobiFilename(d.Name()); !ok {
 			return nil
 		}
 

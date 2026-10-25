@@ -3,6 +3,8 @@ services:
     image: llabbs/cctv-monitor:latest
     container_name: cctv-monitor
     restart: unless-stopped
+    # Akses root untuk membaca volume rekaman host NVR (aman karena volume di-mount :ro)
+    user: "0:0"
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       # Mount folder storage rekaman Shinobi di host (read-only agar aman)

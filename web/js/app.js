@@ -50,6 +50,8 @@
     var recDownloadBtn = document.getElementById("rec-download-btn");
     var recVideoPlayer = document.getElementById("rec-video-player");
     var recVideoEmpty = document.getElementById("rec-video-empty");
+    var recVideoLoading = document.getElementById("rec-video-loading");
+    var recVideoError = document.getElementById("rec-video-error");
 
     var timelineDateTag = document.getElementById("timeline-date-tag");
     var recTimeJump = document.getElementById("rec-time-jump");
@@ -1140,8 +1142,10 @@
             document.body.removeChild(a);
         };
 
-        // Hide empty overlay
-        recVideoEmpty.classList.add("hidden");
+        // Hide empty overlay & reset state
+        if (recVideoEmpty) recVideoEmpty.classList.add("hidden");
+        if (recVideoError) recVideoError.classList.add("hidden");
+        if (recVideoLoading) recVideoLoading.classList.remove("hidden");
 
         // Load and play video via HTTP Range Requests (chunked streaming like YouTube)
         var streamUrl = getAuthenticatedUrl(clip.stream_url);
@@ -1149,12 +1153,23 @@
         recVideoPlayer.load();
 
         if (seekOffsetSec && seekOffsetSec > 0) {
-            recVideoPlayer.currentTime = seekOffsetSec;
+            var onMeta = function () {
+                recVideoPlayer.removeEventListener("loadedmetadata", onMeta);
+                try {
+                    recVideoPlayer.currentTime = seekOffsetSec;
+                } catch (err) {}
+            };
+            recVideoPlayer.addEventListener("loadedmetadata", onMeta);
         }
 
-        recVideoPlayer.play().catch(function (e) {
-            console.log("Autoplay was prevented:", e);
-        });
+        var playPromise = recVideoPlayer.play();
+        if (playPromise !== undefined) {
+            playPromise.catch(function (e) {
+                console.warn("Autoplay was prevented (trying muted):", e);
+                recVideoPlayer.muted = true;
+                recVideoPlayer.play().catch(function () {});
+            });
+        }
 
         // Show scrubber playhead
         if (scrubberPlayhead) {
@@ -1164,8 +1179,35 @@
         }
     }
 
-    // Update Scrubber Playhead Position in real-time as video plays
+    // Video Player State Handlers
     if (recVideoPlayer) {
+        recVideoPlayer.addEventListener("waiting", function () {
+            if (recVideoLoading) recVideoLoading.classList.remove("hidden");
+        });
+        recVideoPlayer.addEventListener("playing", function () {
+            if (recVideoLoading) recVideoLoading.classList.add("hidden");
+            if (recVideoError) recVideoError.classList.add("hidden");
+        });
+        recVideoPlayer.addEventListener("canplay", function () {
+            if (recVideoLoading) recVideoLoading.classList.add("hidden");
+        });
+        recVideoPlayer.addEventListener("error", function () {
+            if (recVideoLoading) recVideoLoading.classList.add("hidden");
+            if (recVideoError) {
+                var err = recVideoPlayer.error;
+                var msg = "⚠️ Gagal memutar video rekaman.";
+                if (err) {
+                    if (err.code === 1) msg = "⚠️ Pemutaran video dibatalkan.";
+                    else if (err.code === 2) msg = "⚠️ Kesalahan jaringan saat memuat video.";
+                    else if (err.code === 3) msg = "⚠️ Format video tidak didukung oleh browser.";
+                    else if (err.code === 4) msg = "⚠️ File video tidak ditemukan atau izin akses ditolak (401/404).";
+                }
+                recVideoError.innerHTML = '<span>' + msg + '</span><br><small style="color:#aaa;">Pastikan file ada di server dan container memiliki izin akses baca.</small>';
+                recVideoError.classList.remove("hidden");
+            }
+        });
+
+        // Update Scrubber Playhead Position in real-time as video plays
         recVideoPlayer.addEventListener("timeupdate", function () {
             if (recCurrentClipIndex >= 0 && recCurrentClipIndex < recClips.length && scrubberPlayhead) {
                 var clip = recClips[recCurrentClipIndex];

@@ -466,6 +466,8 @@ func (s *Server) handleRecordingStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Accept-Ranges", "bytes")
 	w.Header().Set("Content-Type", "video/mp4")
 
+	log.Printf("[RECORDING] Streaming %s (Range: %s)", relPath, r.Header.Get("Range"))
+
 	// http.ServeFile implements RFC 7233 range requests natively
 	http.ServeFile(w, r, fullPath)
 }

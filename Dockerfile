@@ -38,7 +38,9 @@ COPY config.yaml /app/config.yaml
 # Create streams directory
 RUN mkdir -p /app/streams && chown -R cctv:cctv /app
 
-USER cctv
+# Run as root by default so it can read mounted host NVR storage directories
+# (volume mount can be mounted read-only :ro for security)
+# USER cctv
 
 EXPOSE 8080
 

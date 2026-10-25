@@ -113,6 +113,11 @@ func TestShinobiHierarchicalStructure(t *testing.T) {
 	_ = os.MkdirAll(filepath.Join(tmpDir, "temp"), 0755)
 	_ = os.MkdirAll(filepath.Join(tmpDir, groupKey, monitorID+"_timelapse"), 0755)
 
+	// Create random/test directory like "tes-rekam" with a dummy mp4
+	tesRekamDir := filepath.Join(tmpDir, "tes-rekam")
+	_ = os.MkdirAll(tesRekamDir, 0755)
+	_ = os.WriteFile(filepath.Join(tesRekamDir, "dummy_test.mp4"), []byte("non-shinobi video"), 0644)
+
 	testFiles := []string{
 		"2026-10-18T12-50-01.mp4",
 		"2026-10-18T12-55-00.mp4",
