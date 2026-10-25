@@ -46,11 +46,17 @@ type AuthConfig struct {
 	Email    string `yaml:"email"` // Default email/username
 }
 
+// RecordingsConfig holds settings for CCTV video recordings storage.
+type RecordingsConfig struct {
+	Dir string `yaml:"dir"` // Directory path to recordings (e.g. ./rekaman_cctv or /mnt/nvr_storage)
+}
+
 // Config is the top-level application configuration.
 type Config struct {
-	Server  ServerConfig `yaml:"server"`
-	Auth    AuthConfig   `yaml:"auth"`
-	Cameras []Camera     `yaml:"cameras"`
+	Server     ServerConfig     `yaml:"server"`
+	Auth       AuthConfig       `yaml:"auth"`
+	Recordings RecordingsConfig `yaml:"recordings"`
+	Cameras    []Camera         `yaml:"cameras"`
 }
 
 // Load reads and validates the configuration from a YAML file.
@@ -77,6 +83,14 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Auth.Email == "" {
 		cfg.Auth.Email = "admin"
+	}
+
+	// Environment variable override for recordings directory
+	if envDir := os.Getenv("RECORDINGS_DIR"); envDir != "" {
+		cfg.Recordings.Dir = envDir
+	}
+	if cfg.Recordings.Dir == "" {
+		cfg.Recordings.Dir = "./rekaman_cctv"
 	}
 
 	// Validate

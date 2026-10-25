@@ -7,6 +7,13 @@ server:
   streams_dir: "./streams"
 
 # ============================================
+# PENYIMPANAN REKAMAN CCTV (Shinobi NVR Storage)
+# ============================================
+# Dapat dioverride lewat environment variable RECORDINGS_DIR di docker-compose
+recordings:
+  dir: "./rekaman_cctv"
+
+# ============================================
 # AUTENTIKASI / LOGIN DASHBOARD
 # ============================================
 # Aktifkan password agar stream tidak bisa diakses orang lain.

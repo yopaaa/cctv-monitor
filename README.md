@@ -13,6 +13,11 @@ Dibuat menggunakan **Golang** dan **FFmpeg** dengan UI dashboard web responsif y
 - ⚡ **Hemat Bandwidth (Thumbnail Mode)**:
   - Default: Grid menampilkan snapshot thumbnail JPEG (di-refresh tiap 10 detik). Bandwidth nyaris 0 Mbps saat standby.
   - Live Stream: Klik kamera untuk membuka modal live video HLS layar penuh.
+- 📼 **Pemutar Rekaman (Playback NVR Shinobi)**:
+  - Tampilan Desktop: Kalender interaktif di kiri & Garis waktu rekaman (timeline klip) di kanan.
+  - **Streaming Bebas Lag (Kaya YouTube)**: Menggunakan HTTP Range Requests (`206 Partial Content`) mengirim data video bertahap sesuai kebutuhan buffer.
+  - Fitur Auto-Next: Otomatis memutar klip berikutnya saat rekaman selesai.
+  - Dukungan Storage Shinobi: Membaca struktur hirarki `/mnt/nvr_storage/{groupKey}/{monitorId}/*.mp4` maupun folder flat.
 - 🔊 **Tombol Alarm / Siren Kamera**: Kontrol alarm CCTV (kompatibel V380 / XiongMai / ONVIF Relay).
 - 📷 **Instant Snapshot & Fullscreen**: Ambil screenshot resolusi penuh dan mode layar penuh per kamera.
 - 🔄 **Auto-Reconnect**: Otomatis menyambungkan ulang stream jika kamera offline / mati lampu.

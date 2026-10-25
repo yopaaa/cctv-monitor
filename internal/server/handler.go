@@ -15,6 +15,7 @@ import (
 
 	"cctv-monitor/internal/config"
 	"cctv-monitor/internal/onvif"
+	"cctv-monitor/internal/recording"
 	"cctv-monitor/internal/stream"
 	"cctv-monitor/web"
 )
@@ -26,16 +27,18 @@ const sessionDuration = 30 * 24 * time.Hour // 30 hari
 type Server struct {
 	cfg      *config.Config
 	mgr      *stream.Manager
+	recMgr   *recording.Manager
 	mux      *http.ServeMux
 	sessions map[string]time.Time
 	sessMu   sync.RWMutex
 }
 
 // New creates a new HTTP server with all routes configured.
-func New(cfg *config.Config, mgr *stream.Manager) *Server {
+func New(cfg *config.Config, mgr *stream.Manager, recMgr *recording.Manager) *Server {
 	s := &Server{
 		cfg:      cfg,
 		mgr:      mgr,
+		recMgr:   recMgr,
 		mux:      http.NewServeMux(),
 		sessions: make(map[string]time.Time),
 	}
@@ -53,6 +56,12 @@ func (s *Server) routes() {
 	// Protected REST APIs
 	s.mux.HandleFunc("GET /api/cameras", s.requireAuth(s.handleCameras))
 	s.mux.HandleFunc("POST /api/cameras/{id}/alarm", s.requireAuth(s.handleAlarm))
+
+	// Recordings REST APIs (HTTP Range / Chunked Streaming)
+	s.mux.HandleFunc("GET /api/recordings/cameras", s.requireAuth(s.handleRecordingCameras))
+	s.mux.HandleFunc("GET /api/recordings/dates", s.requireAuth(s.handleRecordingDates))
+	s.mux.HandleFunc("GET /api/recordings/timeline", s.requireAuth(s.handleRecordingTimeline))
+	s.mux.HandleFunc("GET /api/recordings/stream", s.requireAuth(s.handleRecordingStream))
 
 	// HLS stream segments — served from filesystem (runtime files)
 	streamsDir := http.Dir(s.mgr.StreamsDir())
@@ -396,6 +405,69 @@ func (s *Server) handleAlarm(w http.ResponseWriter, r *http.Request) {
 		"camera":  camID,
 		"alarm":   req.Action,
 	})
+}
+
+// --- Recordings Handlers (Playback & Chunked HTTP Range Streaming) ---
+
+// handleRecordingCameras returns the list of cameras/monitors found in the recordings directory.
+func (s *Server) handleRecordingCameras(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	cameras := s.recMgr.GetCameras()
+	writeJSON(w, http.StatusOK, cameras)
+}
+
+// handleRecordingDates returns the dates (YYYY-MM-DD) with available recordings for a camera.
+func (s *Server) handleRecordingDates(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	camID := r.URL.Query().Get("camera")
+	dates := s.recMgr.GetDates(camID)
+	writeJSON(w, http.StatusOK, dates)
+}
+
+// handleRecordingTimeline returns the video clips for a camera and date, sorted chronologically.
+func (s *Server) handleRecordingTimeline(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	camID := r.URL.Query().Get("camera")
+	date := r.URL.Query().Get("date")
+
+	clips := s.recMgr.GetClips(camID, date)
+	writeJSON(w, http.StatusOK, clips)
+}
+
+// handleRecordingStream streams a recorded MP4 video using HTTP Range Requests (Status 206 Partial Content).
+// This transmits chunks on demand as the user watches or seeks, avoiding network lag and huge buffering.
+func (s *Server) handleRecordingStream(w http.ResponseWriter, r *http.Request) {
+	relPath := r.URL.Query().Get("file")
+	if relPath == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "parameter 'file' diperlukan",
+		})
+		return
+	}
+
+	fullPath, err := s.recMgr.GetFullPath(relPath)
+	if err != nil {
+		log.Printf("[RECORDING] Access error for %q: %v", relPath, err)
+		writeJSON(w, http.StatusNotFound, map[string]interface{}{
+			"success": false,
+			"error":   "File rekaman tidak ditemukan atau tidak valid",
+		})
+		return
+	}
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Accept-Ranges", "bytes")
+	w.Header().Set("Content-Type", "video/mp4")
+
+	// http.ServeFile implements RFC 7233 range requests natively
+	http.ServeFile(w, r, fullPath)
 }
 
 func triggerHTTPAlarm(method, targetURL, username, password string) error {

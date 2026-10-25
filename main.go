@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"cctv-monitor/internal/config"
+	"cctv-monitor/internal/recording"
 	"cctv-monitor/internal/server"
 	"cctv-monitor/internal/stream"
 )
@@ -29,6 +30,10 @@ func main() {
 	// Initialize stream manager
 	mgr := stream.NewManager(cfg)
 
+	// Initialize recordings manager
+	recMgr := recording.NewManager(cfg)
+	log.Printf("[INFO] Recordings storage path: %s", recMgr.BaseDir())
+
 	// Start all camera streams
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -38,7 +43,7 @@ func main() {
 	}
 
 	// Initialize HTTP server
-	srv := server.New(cfg, mgr)
+	srv := server.New(cfg, mgr, recMgr)
 
 	// Graceful shutdown on SIGINT/SIGTERM
 	sigCh := make(chan os.Signal, 1)

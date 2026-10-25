@@ -21,13 +21,38 @@
     var THUMB_INTERVAL = 10000;
     var RETRY_DELAY = 3000;
 
-    // DOM Elements — Dashboard
+    // DOM Elements — Dashboard & Navigation
+    var navLiveBtn = document.getElementById("nav-live-btn");
+    var navRecordingsBtn = document.getElementById("nav-recordings-btn");
+    var liveView = document.getElementById("live-view");
+    var recordingsView = document.getElementById("recordings-view");
+    var gridSelectorGroup = document.getElementById("grid-selector-group");
+
     var grid = document.getElementById("camera-grid");
     var gridSelect = document.getElementById("grid-select");
     var statusIndicator = document.getElementById("status-indicator");
     var userProfile = document.getElementById("user-profile");
     var userEmailBadge = document.getElementById("user-email-badge");
     var logoutBtn = document.getElementById("logout-btn");
+
+    // DOM Elements — Recordings / Playback
+    var recCameraSelect = document.getElementById("rec-camera-select");
+    var calPrevBtn = document.getElementById("cal-prev-btn");
+    var calNextBtn = document.getElementById("cal-next-btn");
+    var calMonthYear = document.getElementById("cal-month-year");
+    var calendarDays = document.getElementById("calendar-days");
+    var recSelectedDateLabel = document.getElementById("rec-selected-date-label");
+    var recTotalClipsLabel = document.getElementById("rec-total-clips-label");
+
+    var recNowPlayingTitle = document.getElementById("rec-now-playing-title");
+    var recNowPlayingMeta = document.getElementById("rec-now-playing-meta");
+    var recAutoplayCheck = document.getElementById("rec-autoplay-check");
+    var recDownloadBtn = document.getElementById("rec-download-btn");
+    var recVideoPlayer = document.getElementById("rec-video-player");
+    var recVideoEmpty = document.getElementById("rec-video-empty");
+
+    var timelineDateTag = document.getElementById("timeline-date-tag");
+    var recTimelineGrid = document.getElementById("rec-timeline-grid");
 
     // DOM Elements — Modal
     var modalOverlay = document.getElementById("modal-overlay");
@@ -47,7 +72,7 @@
     var loginError = document.getElementById("login-error");
     var loginSubmitBtn = document.getElementById("login-submit-btn");
 
-    // State
+    // State — Live
     var currentCameras = [];
     var activeModalCam = null;
     var activeHls = null;
@@ -57,6 +82,18 @@
     var alarmLoading = false;
     var currentEmail = "admin";
     var authToken = localStorage.getItem("cctv_token") || "";
+
+    // State — Recordings
+    var currentView = "live";
+    var recCameras = [];
+    var recSelectedCamera = "";
+    var recAvailableDates = [];
+    var recSelectedDate = "";
+    var calCurrentDate = new Date();
+    var calYear = calCurrentDate.getFullYear();
+    var calMonth = calCurrentDate.getMonth();
+    var recClips = [];
+    var recCurrentClipIndex = -1;
 
     // ===================================
     // Helper: Authenticated Fetch Wrapper
@@ -698,6 +735,311 @@
     });
 
     // ===================================
+    // View Switcher (Live vs Rekaman)
+    // ===================================
+
+    function switchView(view) {
+        currentView = view;
+        if (view === "live") {
+            navLiveBtn.classList.add("active");
+            navRecordingsBtn.classList.remove("active");
+            liveView.classList.remove("hidden");
+            recordingsView.classList.add("hidden");
+            if (gridSelectorGroup) gridSelectorGroup.style.display = "";
+            if (recVideoPlayer) recVideoPlayer.pause();
+        } else {
+            navLiveBtn.classList.remove("active");
+            navRecordingsBtn.classList.add("active");
+            liveView.classList.add("hidden");
+            recordingsView.classList.remove("hidden");
+            if (gridSelectorGroup) gridSelectorGroup.style.display = "none";
+            if (activeModalCam) closeModal();
+            initRecordingsView();
+        }
+    }
+
+    if (navLiveBtn) {
+        navLiveBtn.addEventListener("click", function () {
+            switchView("live");
+        });
+    }
+
+    if (navRecordingsBtn) {
+        navRecordingsBtn.addEventListener("click", function () {
+            switchView("recordings");
+        });
+    }
+
+    // ===================================
+    // Recordings Module (Calendar, Timeline & Chunked Player)
+    // ===================================
+
+    var MONTH_NAMES = [
+        "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+        "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+    ];
+
+    function initRecordingsView() {
+        loadRecordingCameras().then(function () {
+            loadRecordingDates().then(function () {
+                renderCalendar();
+                if (recAvailableDates.length > 0 && !recSelectedDate) {
+                    selectRecordingDate(recAvailableDates[0]);
+                }
+            });
+        });
+    }
+
+    function loadRecordingCameras() {
+        return authFetch("/api/recordings/cameras")
+            .then(function (resp) { return resp.json(); })
+            .then(function (cameras) {
+                recCameras = cameras || [];
+                recCameraSelect.innerHTML = "";
+
+                if (recCameras.length === 0) {
+                    recCameraSelect.innerHTML = '<option value="">Tidak ada rekaman</option>';
+                    return;
+                }
+
+                recCameras.forEach(function (c) {
+                    var opt = document.createElement("option");
+                    opt.value = c.id;
+                    opt.textContent = c.name + " (" + c.clip_count + " klip)";
+                    recCameraSelect.appendChild(opt);
+                });
+
+                if (!recSelectedCamera && recCameras.length > 0) {
+                    recSelectedCamera = recCameras[0].id;
+                }
+                recCameraSelect.value = recSelectedCamera;
+            })
+            .catch(function (err) {
+                console.error("Gagal load recording cameras:", err);
+            });
+    }
+
+    function loadRecordingDates() {
+        var url = "/api/recordings/dates";
+        if (recSelectedCamera) {
+            url += "?camera=" + encodeURIComponent(recSelectedCamera);
+        }
+
+        return authFetch(url)
+            .then(function (resp) { return resp.json(); })
+            .then(function (dates) {
+                recAvailableDates = dates || [];
+
+                // Automatically align calendar to latest recorded date
+                if (recAvailableDates.length > 0) {
+                    var latestParts = recAvailableDates[0].split("-");
+                    if (latestParts.length === 3) {
+                        calYear = parseInt(latestParts[0], 10);
+                        calMonth = parseInt(latestParts[1], 10) - 1;
+                    }
+                }
+            })
+            .catch(function (err) {
+                console.error("Gagal load dates:", err);
+            });
+    }
+
+    function renderCalendar() {
+        if (!calMonthYear || !calendarDays) return;
+
+        calMonthYear.textContent = MONTH_NAMES[calMonth] + " " + calYear;
+        calendarDays.innerHTML = "";
+
+        var firstDayIndex = new Date(calYear, calMonth, 1).getDay();
+        var daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+
+        // Empty cells before first day
+        for (var i = 0; i < firstDayIndex; i++) {
+            var emptyCell = document.createElement("div");
+            emptyCell.className = "cal-day empty";
+            calendarDays.appendChild(emptyCell);
+        }
+
+        // Render days
+        for (var day = 1; day <= daysInMonth; day++) {
+            var dayStr = (day < 10 ? "0" : "") + day;
+            var monthStr = (calMonth + 1 < 10 ? "0" : "") + (calMonth + 1);
+            var dateISO = calYear + "-" + monthStr + "-" + dayStr;
+
+            var dayBtn = document.createElement("div");
+            dayBtn.className = "cal-day";
+            dayBtn.textContent = day;
+
+            var hasRec = recAvailableDates.indexOf(dateISO) !== -1;
+            if (hasRec) {
+                dayBtn.classList.add("has-recording");
+                dayBtn.title = "Ada rekaman video";
+            }
+
+            if (dateISO === recSelectedDate) {
+                dayBtn.classList.add("selected");
+            }
+
+            (function (dISO) {
+                dayBtn.addEventListener("click", function () {
+                    selectRecordingDate(dISO);
+                });
+            })(dateISO);
+
+            calendarDays.appendChild(dayBtn);
+        }
+    }
+
+    function selectRecordingDate(dateISO) {
+        recSelectedDate = dateISO;
+
+        var parts = dateISO.split("-");
+        var displayLabel = parts.length === 3 ? parts[2] + " " + MONTH_NAMES[parseInt(parts[1], 10) - 1] + " " + parts[0] : dateISO;
+
+        recSelectedDateLabel.textContent = displayLabel;
+        timelineDateTag.textContent = displayLabel;
+
+        renderCalendar();
+        loadTimelineClips(recSelectedCamera, dateISO);
+    }
+
+    function loadTimelineClips(camID, dateISO) {
+        recTimelineGrid.innerHTML = '<div class="timeline-empty">Memuat rekaman...</div>';
+        recCurrentClipIndex = -1;
+
+        var url = "/api/recordings/timeline?camera=" + encodeURIComponent(camID) + "&date=" + encodeURIComponent(dateISO);
+        authFetch(url)
+            .then(function (resp) { return resp.json(); })
+            .then(function (clips) {
+                recClips = clips || [];
+                recTotalClipsLabel.textContent = recClips.length + " klip";
+                renderTimelineClips();
+            })
+            .catch(function (err) {
+                recTimelineGrid.innerHTML = '<div class="timeline-empty">Gagal memuat: ' + err.message + '</div>';
+            });
+    }
+
+    function renderTimelineClips() {
+        recTimelineGrid.innerHTML = "";
+
+        if (recClips.length === 0) {
+            recTimelineGrid.innerHTML = '<div class="timeline-empty">Tidak ada video rekaman pada tanggal ini</div>';
+            return;
+        }
+
+        recClips.forEach(function (clip, idx) {
+            var btn = document.createElement("button");
+            btn.className = "timeline-clip-btn" + (idx === recCurrentClipIndex ? " active" : "");
+            btn.id = "rec-clip-" + idx;
+
+            var timeEl = document.createElement("span");
+            timeEl.className = "clip-time";
+            timeEl.innerHTML = "▶ " + clip.time_label;
+
+            var metaEl = document.createElement("span");
+            metaEl.className = "clip-meta";
+            metaEl.textContent = clip.time + " • " + clip.size_formatted;
+
+            btn.appendChild(timeEl);
+            btn.appendChild(metaEl);
+
+            btn.addEventListener("click", function () {
+                playRecordingClip(idx);
+            });
+
+            recTimelineGrid.appendChild(btn);
+        });
+    }
+
+    function playRecordingClip(index) {
+        if (index < 0 || index >= recClips.length) return;
+        recCurrentClipIndex = index;
+        var clip = recClips[index];
+
+        var buttons = recTimelineGrid.querySelectorAll(".timeline-clip-btn");
+        buttons.forEach(function (b) { b.classList.remove("active"); });
+
+        var activeBtn = document.getElementById("rec-clip-" + index);
+        if (activeBtn) {
+            activeBtn.classList.add("active");
+            activeBtn.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+
+        recNowPlayingTitle.textContent = clip.camera_name + " — " + clip.time_label;
+        recNowPlayingMeta.textContent = clip.date + " " + clip.time + " (" + clip.size_formatted + ")";
+
+        recDownloadBtn.disabled = false;
+        recDownloadBtn.onclick = function () {
+            var downloadUrl = getAuthenticatedUrl(clip.stream_url);
+            var a = document.createElement("a");
+            a.href = downloadUrl;
+            a.download = clip.filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        };
+
+        recVideoEmpty.classList.add("hidden");
+
+        // Progressive range streaming via HTTP 206
+        var streamUrl = getAuthenticatedUrl(clip.stream_url);
+        recVideoPlayer.src = streamUrl;
+        recVideoPlayer.load();
+        recVideoPlayer.play().catch(function (e) {
+            console.log("Autoplay was prevented:", e);
+        });
+    }
+
+    if (recVideoPlayer) {
+        recVideoPlayer.addEventListener("ended", function () {
+            if (recAutoplayCheck && recAutoplayCheck.checked) {
+                if (recCurrentClipIndex + 1 < recClips.length) {
+                    playRecordingClip(recCurrentClipIndex + 1);
+                }
+            }
+        });
+    }
+
+    if (calPrevBtn) {
+        calPrevBtn.addEventListener("click", function () {
+            calMonth--;
+            if (calMonth < 0) {
+                calMonth = 11;
+                calYear--;
+            }
+            renderCalendar();
+        });
+    }
+
+    if (calNextBtn) {
+        calNextBtn.addEventListener("click", function () {
+            calMonth++;
+            if (calMonth > 11) {
+                calMonth = 0;
+                calYear++;
+            }
+            renderCalendar();
+        });
+    }
+
+    if (recCameraSelect) {
+        recCameraSelect.addEventListener("change", function () {
+            recSelectedCamera = this.value;
+            recSelectedDate = "";
+            loadRecordingDates().then(function () {
+                renderCalendar();
+                if (recAvailableDates.length > 0) {
+                    selectRecordingDate(recAvailableDates[0]);
+                } else {
+                    recClips = [];
+                    renderTimelineClips();
+                }
+            });
+        });
+    }
+
+    // ===================================
     // Dashboard Loop & Lifecycle
     // ===================================
 
@@ -712,6 +1054,9 @@
         thumbTimers = {};
         if (activeModalCam) {
             closeModal();
+        }
+        if (recVideoPlayer) {
+            recVideoPlayer.pause();
         }
     }
 

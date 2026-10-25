@@ -4,6 +4,10 @@ cctv-monitor
 # Runtime HLS segments
 streams/
 
+# Local recordings data
+rekaman_cctv/
+*.zip
+
 # Config with credentials
 config.yaml
 
