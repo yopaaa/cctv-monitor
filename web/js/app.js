@@ -1149,8 +1149,9 @@
 
         // Load and play video via HTTP Range Requests (chunked streaming like YouTube)
         var streamUrl = getAuthenticatedUrl(clip.stream_url);
-        recVideoPlayer.src = streamUrl;
-        recVideoPlayer.load();
+        if (recVideoPlayer.src !== streamUrl) {
+            recVideoPlayer.src = streamUrl;
+        }
 
         if (seekOffsetSec && seekOffsetSec > 0) {
             var onMeta = function () {
@@ -1165,6 +1166,10 @@
         var playPromise = recVideoPlayer.play();
         if (playPromise !== undefined) {
             playPromise.catch(function (e) {
+                if (e.name === "AbortError") {
+                    // Aborted by browser because user clicked another clip or scrubbed
+                    return;
+                }
                 console.warn("Autoplay was prevented (trying muted):", e);
                 recVideoPlayer.muted = true;
                 recVideoPlayer.play().catch(function () {});
@@ -1197,7 +1202,10 @@
                 var err = recVideoPlayer.error;
                 var msg = "⚠️ Gagal memutar video rekaman.";
                 if (err) {
-                    if (err.code === 1) msg = "⚠️ Pemutaran video dibatalkan.";
+                    if (err.code === 1) {
+                        // MEDIA_ERR_ABORTED: Normal when user switches video
+                        return;
+                    }
                     else if (err.code === 2) msg = "⚠️ Kesalahan jaringan saat memuat video.";
                     else if (err.code === 3) msg = "⚠️ Format video tidak didukung oleh browser.";
                     else if (err.code === 4) msg = "⚠️ File video tidak ditemukan atau izin akses ditolak (401/404).";

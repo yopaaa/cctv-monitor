@@ -61,7 +61,17 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/recordings/cameras", s.requireAuth(s.handleRecordingCameras))
 	s.mux.HandleFunc("GET /api/recordings/dates", s.requireAuth(s.handleRecordingDates))
 	s.mux.HandleFunc("GET /api/recordings/timeline", s.requireAuth(s.handleRecordingTimeline))
-	s.mux.HandleFunc("GET /api/recordings/stream", s.requireAuth(s.handleRecordingStream))
+	s.mux.HandleFunc("/api/recordings/stream", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Range, Authorization, Cache-Control")
+			w.Header().Set("Access-Control-Expose-Headers", "Content-Range, Content-Length, Accept-Ranges")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		s.requireAuth(s.handleRecordingStream)(w, r)
+	})
 
 	// HLS stream segments — served from filesystem (runtime files)
 	streamsDir := http.Dir(s.mgr.StreamsDir())
@@ -463,7 +473,12 @@ func (s *Server) handleRecordingStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Range, Authorization, Cache-Control")
+	w.Header().Set("Access-Control-Expose-Headers", "Content-Range, Content-Length, Accept-Ranges")
 	w.Header().Set("Accept-Ranges", "bytes")
+	w.Header().Set("Cache-Control", "private, no-cache, no-store, must-revalidate, no-transform")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 	w.Header().Set("Content-Type", "video/mp4")
 
 	log.Printf("[RECORDING] Streaming %s (Range: %s)", relPath, r.Header.Get("Range"))
