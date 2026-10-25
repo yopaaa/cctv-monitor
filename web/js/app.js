@@ -52,7 +52,14 @@
     var recVideoEmpty = document.getElementById("rec-video-empty");
 
     var timelineDateTag = document.getElementById("timeline-date-tag");
-    var recTimelineGrid = document.getElementById("rec-timeline-grid");
+    var recTimeJump = document.getElementById("rec-time-jump");
+    var recTimeJumpBtn = document.getElementById("rec-time-jump-btn");
+    var timelineScrubber = document.getElementById("timeline-scrubber");
+    var scrubberSegments = document.getElementById("scrubber-segments");
+    var scrubberPlayhead = document.getElementById("scrubber-playhead");
+    var scrubberTooltip = document.getElementById("scrubber-tooltip");
+    var hourFilterPills = document.getElementById("hour-filter-pills");
+    var recTimelineGrouped = document.getElementById("rec-timeline-grouped");
 
     // DOM Elements — Modal
     var modalOverlay = document.getElementById("modal-overlay");
@@ -94,6 +101,7 @@
     var calMonth = calCurrentDate.getMonth();
     var recClips = [];
     var recCurrentClipIndex = -1;
+    var selectedHourFilter = "all";
 
     // ===================================
     // Helper: Authenticated Fetch Wrapper
@@ -920,55 +928,202 @@
             });
     }
 
+    function timeStrToSeconds(str) {
+        if (!str) return 0;
+        var parts = str.split(":");
+        var h = parseInt(parts[0], 10) || 0;
+        var m = parseInt(parts[1], 10) || 0;
+        var s = parseInt(parts[2], 10) || 0;
+        return h * 3600 + m * 60 + s;
+    }
+
+    function secondsToTimeStr(totalSec) {
+        var h = Math.floor(totalSec / 3600) % 24;
+        var m = Math.floor((totalSec % 3600) / 60);
+        var s = Math.floor(totalSec % 60);
+        var hh = (h < 10 ? "0" : "") + h;
+        var mm = (m < 10 ? "0" : "") + m;
+        var ss = (s < 10 ? "0" : "") + s;
+        return hh + ":" + mm + ":" + ss;
+    }
+
     function renderTimelineClips() {
-        recTimelineGrid.innerHTML = "";
+        if (!recTimelineGrouped) return;
+
+        recTimelineGrouped.innerHTML = "";
 
         if (recClips.length === 0) {
-            recTimelineGrid.innerHTML = '<div class="timeline-empty">Tidak ada video rekaman pada tanggal ini</div>';
+            recTimelineGrouped.innerHTML = '<div class="timeline-empty">Tidak ada video rekaman pada tanggal ini</div>';
+            if (scrubberSegments) scrubberSegments.innerHTML = "";
+            if (hourFilterPills) hourFilterPills.innerHTML = "";
+            if (scrubberPlayhead) scrubberPlayhead.style.display = "none";
             return;
         }
 
-        recClips.forEach(function (clip, idx) {
-            var btn = document.createElement("button");
-            btn.className = "timeline-clip-btn" + (idx === recCurrentClipIndex ? " active" : "");
-            btn.id = "rec-clip-" + idx;
+        // Process clips with seconds and group by hour
+        var hourGroups = {};
+        for (var i = 0; i < recClips.length; i++) {
+            var clip = recClips[i];
+            clip.startSec = timeStrToSeconds(clip.time);
+            clip.durationSec = 300; // default 5 min
+            clip.origIdx = i;
 
-            var timeEl = document.createElement("span");
-            timeEl.className = "clip-time";
-            timeEl.innerHTML = "▶ " + clip.time_label;
+            var hourKey = clip.time.substring(0, 2); // e.g. "13", "14"
+            if (!hourGroups[hourKey]) {
+                hourGroups[hourKey] = [];
+            }
+            hourGroups[hourKey].push(clip);
+        }
 
-            var metaEl = document.createElement("span");
-            metaEl.className = "clip-meta";
-            metaEl.textContent = clip.time + " • " + clip.size_formatted;
+        // 1. Render Interactive 24H Scrubber Bar
+        render24HScrubber();
 
-            btn.appendChild(timeEl);
-            btn.appendChild(metaEl);
+        // 2. Render Hour Quick Filter Pills
+        renderHourFilterPills(hourGroups);
 
-            btn.addEventListener("click", function () {
-                playRecordingClip(idx);
+        // 3. Render Neatly Grouped Clips List
+        renderGroupedClipsList(hourGroups);
+    }
+
+    function render24HScrubber() {
+        if (!scrubberSegments) return;
+        scrubberSegments.innerHTML = "";
+
+        recClips.forEach(function (clip) {
+            var leftPct = (clip.startSec / 86400) * 100;
+            var widthPct = Math.max(0.28, (clip.durationSec / 86400) * 100);
+
+            var block = document.createElement("div");
+            block.className = "scrubber-block";
+            block.style.left = leftPct + "%";
+            block.style.width = widthPct + "%";
+            block.title = clip.time + " (" + clip.size_formatted + ")";
+
+            block.addEventListener("click", function (e) {
+                e.stopPropagation();
+                playRecordingClip(clip.origIdx);
             });
 
-            recTimelineGrid.appendChild(btn);
+            scrubberSegments.appendChild(block);
         });
     }
 
-    function playRecordingClip(index) {
+    function renderHourFilterPills(hourGroups) {
+        if (!hourFilterPills) return;
+        hourFilterPills.innerHTML = "";
+
+        var hours = Object.keys(hourGroups).sort();
+
+        // All hours pill
+        var allPill = document.createElement("button");
+        allPill.className = "hour-pill" + (selectedHourFilter === "all" ? " active" : "");
+        allPill.textContent = "🕒 Semua Jam (" + recClips.length + ")";
+        allPill.addEventListener("click", function () {
+            selectedHourFilter = "all";
+            renderTimelineClips();
+        });
+        hourFilterPills.appendChild(allPill);
+
+        // Individual hour pills
+        hours.forEach(function (h) {
+            var pill = document.createElement("button");
+            pill.className = "hour-pill" + (selectedHourFilter === h ? " active" : "");
+            pill.textContent = h + ":00 (" + hourGroups[h].length + ")";
+            pill.addEventListener("click", function () {
+                selectedHourFilter = h;
+                renderTimelineClips();
+            });
+            hourFilterPills.appendChild(pill);
+        });
+    }
+
+    function renderGroupedClipsList(hourGroups) {
+        if (!recTimelineGrouped) return;
+        recTimelineGrouped.innerHTML = "";
+
+        var hours = Object.keys(hourGroups).sort();
+        var renderedCount = 0;
+
+        hours.forEach(function (h) {
+            if (selectedHourFilter !== "all" && selectedHourFilter !== h) {
+                return;
+            }
+
+            renderedCount++;
+            var groupDiv = document.createElement("div");
+            groupDiv.className = "timeline-hour-group";
+            groupDiv.id = "hour-group-" + h;
+
+            var header = document.createElement("div");
+            header.className = "hour-group-header";
+
+            var title = document.createElement("div");
+            title.className = "hour-group-title";
+            title.innerHTML = '<span>🕒</span> <span>Pukul ' + h + ':00</span>';
+
+            var meta = document.createElement("div");
+            meta.className = "hour-group-meta";
+            meta.textContent = hourGroups[h].length + " rekaman";
+
+            header.appendChild(title);
+            header.appendChild(meta);
+            groupDiv.appendChild(header);
+
+            var clipsContainer = document.createElement("div");
+            clipsContainer.className = "hour-group-clips";
+
+            hourGroups[h].forEach(function (clip) {
+                var card = document.createElement("button");
+                card.className = "timeline-clip-card" + (clip.origIdx === recCurrentClipIndex ? " active" : "");
+                card.id = "rec-clip-" + clip.origIdx;
+
+                var timeRow = document.createElement("div");
+                timeRow.className = "clip-time-row";
+                timeRow.innerHTML = '<span class="clip-play-icon">▶</span> <span>' + clip.time_label + '</span>';
+
+                var metaRow = document.createElement("div");
+                metaRow.className = "clip-meta-row";
+                metaRow.innerHTML = '<span>' + clip.time + '</span><span>' + clip.size_formatted + '</span>';
+
+                card.appendChild(timeRow);
+                card.appendChild(metaRow);
+
+                card.addEventListener("click", function () {
+                    playRecordingClip(clip.origIdx);
+                });
+
+                clipsContainer.appendChild(card);
+            });
+
+            groupDiv.appendChild(clipsContainer);
+            recTimelineGrouped.appendChild(groupDiv);
+        });
+
+        if (renderedCount === 0) {
+            recTimelineGrouped.innerHTML = '<div class="timeline-empty">Tidak ada video pada filter jam ini</div>';
+        }
+    }
+
+    function playRecordingClip(index, seekOffsetSec) {
         if (index < 0 || index >= recClips.length) return;
         recCurrentClipIndex = index;
         var clip = recClips[index];
 
-        var buttons = recTimelineGrid.querySelectorAll(".timeline-clip-btn");
-        buttons.forEach(function (b) { b.classList.remove("active"); });
+        // Update active class on clip cards
+        var cards = recTimelineGrouped.querySelectorAll(".timeline-clip-card");
+        cards.forEach(function (c) { c.classList.remove("active"); });
 
-        var activeBtn = document.getElementById("rec-clip-" + index);
-        if (activeBtn) {
-            activeBtn.classList.add("active");
-            activeBtn.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        var activeCard = document.getElementById("rec-clip-" + index);
+        if (activeCard) {
+            activeCard.classList.add("active");
+            activeCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
         }
 
+        // Update info bar
         recNowPlayingTitle.textContent = clip.camera_name + " — " + clip.time_label;
         recNowPlayingMeta.textContent = clip.date + " " + clip.time + " (" + clip.size_formatted + ")";
 
+        // Enable download
         recDownloadBtn.disabled = false;
         recDownloadBtn.onclick = function () {
             var downloadUrl = getAuthenticatedUrl(clip.stream_url);
@@ -980,14 +1135,135 @@
             document.body.removeChild(a);
         };
 
+        // Hide empty overlay
         recVideoEmpty.classList.add("hidden");
 
-        // Progressive range streaming via HTTP 206
+        // Load and play video via HTTP Range Requests (chunked streaming like YouTube)
         var streamUrl = getAuthenticatedUrl(clip.stream_url);
         recVideoPlayer.src = streamUrl;
         recVideoPlayer.load();
+
+        if (seekOffsetSec && seekOffsetSec > 0) {
+            recVideoPlayer.currentTime = seekOffsetSec;
+        }
+
         recVideoPlayer.play().catch(function (e) {
             console.log("Autoplay was prevented:", e);
+        });
+
+        // Show scrubber playhead
+        if (scrubberPlayhead) {
+            var startSec = clip.startSec || timeStrToSeconds(clip.time);
+            scrubberPlayhead.style.left = ((startSec / 86400) * 100) + "%";
+            scrubberPlayhead.style.display = "block";
+        }
+    }
+
+    // Update Scrubber Playhead Position in real-time as video plays
+    if (recVideoPlayer) {
+        recVideoPlayer.addEventListener("timeupdate", function () {
+            if (recCurrentClipIndex >= 0 && recCurrentClipIndex < recClips.length && scrubberPlayhead) {
+                var clip = recClips[recCurrentClipIndex];
+                var baseSec = clip.startSec || timeStrToSeconds(clip.time);
+                var currentTotalSec = baseSec + recVideoPlayer.currentTime;
+                var pct = (currentTotalSec / 86400) * 100;
+                scrubberPlayhead.style.left = pct + "%";
+                scrubberPlayhead.style.display = "block";
+            }
+        });
+    }
+
+    // Scrubber Bar Click & Hover Handlers
+    if (timelineScrubber) {
+        timelineScrubber.addEventListener("mousemove", function (e) {
+            if (!scrubberTooltip || recClips.length === 0) return;
+            var rect = timelineScrubber.getBoundingClientRect();
+            var x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+            var pct = x / rect.width;
+            var hoverSec = Math.floor(pct * 86400);
+
+            scrubberTooltip.textContent = secondsToTimeStr(hoverSec);
+            scrubberTooltip.style.left = x + "px";
+            scrubberTooltip.style.display = "block";
+        });
+
+        timelineScrubber.addEventListener("mouseleave", function () {
+            if (scrubberTooltip) scrubberTooltip.style.display = "none";
+        });
+
+        timelineScrubber.addEventListener("click", function (e) {
+            if (recClips.length === 0) return;
+            var rect = timelineScrubber.getBoundingClientRect();
+            var x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+            var targetSec = (x / rect.width) * 86400;
+
+            // Find clip containing or closest to targetSec
+            var bestIdx = 0;
+            var minDiff = Infinity;
+            var exactOffset = 0;
+
+            for (var i = 0; i < recClips.length; i++) {
+                var c = recClips[i];
+                var s = c.startSec || timeStrToSeconds(c.time);
+                var d = c.durationSec || 300;
+
+                if (targetSec >= s && targetSec < s + d) {
+                    bestIdx = i;
+                    exactOffset = targetSec - s;
+                    minDiff = 0;
+                    break;
+                }
+
+                var diff = Math.abs(targetSec - s);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    bestIdx = i;
+                    exactOffset = 0;
+                }
+            }
+
+            playRecordingClip(bestIdx, exactOffset);
+        });
+    }
+
+    // Jump to time input handler
+    function handleTimeJump() {
+        if (!recTimeJump || recClips.length === 0) return;
+        var val = recTimeJump.value; // "HH:MM"
+        if (!val) return;
+
+        var targetSec = timeStrToSeconds(val + ":00");
+        var bestIdx = 0;
+        var minDiff = Infinity;
+
+        for (var i = 0; i < recClips.length; i++) {
+            var c = recClips[i];
+            var s = c.startSec || timeStrToSeconds(c.time);
+            var diff = Math.abs(targetSec - s);
+            if (diff < minDiff) {
+                minDiff = diff;
+                bestIdx = i;
+            }
+        }
+
+        // Also align hour filter if helpful
+        var targetHour = val.split(":")[0];
+        if (targetHour) {
+            selectedHourFilter = targetHour;
+            renderTimelineClips();
+        }
+
+        playRecordingClip(bestIdx);
+    }
+
+    if (recTimeJumpBtn) {
+        recTimeJumpBtn.addEventListener("click", handleTimeJump);
+    }
+    if (recTimeJump) {
+        recTimeJump.addEventListener("keydown", function (e) {
+            if (e.key === "Enter") {
+                handleTimeJump();
+            }
         });
     }
 

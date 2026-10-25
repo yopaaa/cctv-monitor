@@ -521,8 +521,14 @@ body {
         width: 100%;
     }
 
-    .rec-timeline-grid {
-        grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));
+    .hour-group-clips {
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    }
+
+    .timeline-header-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
     }
 }
 
@@ -1197,22 +1203,33 @@ body {
 }
 
 /* Timeline Clips Card */
+/* Timeline Card with 24H Interactive Scrubber Bar & Hour Groups */
 .rec-timeline-card {
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
     border-radius: 10px;
-    padding: 14px 16px;
+    padding: 16px;
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
-.timeline-bar {
+.timeline-header-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 10px;
 }
 
-.timeline-bar h3 {
+.timeline-title-area {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.timeline-title-area h3 {
     font-size: 0.95rem;
     color: var(--text-primary);
     font-weight: 600;
@@ -1227,16 +1244,249 @@ body {
     border-radius: 4px;
 }
 
-.rec-timeline-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+/* Jump to time input */
+.timeline-jump-area {
+    display: flex;
+    align-items: center;
     gap: 8px;
-    max-height: 280px;
-    overflow-y: auto;
-    padding-right: 4px;
 }
 
-.timeline-clip-btn {
+.jump-label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.time-input {
+    background: #111;
+    border: 1px solid var(--border-color);
+    color: #fff;
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.time-input:focus {
+    border-color: var(--accent);
+}
+
+.jump-btn {
+    background: var(--accent);
+    color: #0b1318;
+    font-weight: 700;
+    border: none;
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.jump-btn:hover {
+    background: #29b6f6;
+    box-shadow: 0 0 10px rgba(79, 195, 247, 0.4);
+}
+
+/* Interactive 24-Hour Scrubber Bar */
+.timeline-scrubber-wrapper {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.timeline-scrubber {
+    position: relative;
+    height: 30px;
+    background: #111;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    cursor: pointer;
+    overflow: visible;
+}
+
+.timeline-scrubber:hover {
+    border-color: var(--accent);
+}
+
+.scrubber-segments {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    overflow: hidden;
+    border-radius: 5px;
+}
+
+.scrubber-block {
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    background: linear-gradient(180deg, #26c6da, #00acc1);
+    border-radius: 2px;
+    box-shadow: 0 0 4px rgba(0, 188, 212, 0.5);
+    transition: opacity 0.15s;
+}
+
+.scrubber-block:hover {
+    filter: brightness(1.2);
+}
+
+.scrubber-playhead {
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    width: 3px;
+    background: #ff5252;
+    border-radius: 2px;
+    box-shadow: 0 0 8px #ff5252;
+    z-index: 5;
+    pointer-events: none;
+    display: none;
+    transform: translateX(-50%);
+}
+
+.scrubber-playhead::after {
+    content: '';
+    position: absolute;
+    top: -5px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 5px solid #ff5252;
+}
+
+.scrubber-tooltip {
+    position: absolute;
+    top: -28px;
+    transform: translateX(-50%);
+    background: #1e1e1e;
+    color: #fff;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    pointer-events: none;
+    display: none;
+    white-space: nowrap;
+    z-index: 10;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
+.scrubber-ticks {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    padding: 0 2px;
+    user-select: none;
+}
+
+/* Quick Hour Filter Pills */
+.hour-filter-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+}
+
+.hour-filter-label {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.hour-filter-pills {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+
+.hour-pill {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 4px 10px;
+    border-radius: 14px;
+    font-size: 0.76rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+}
+
+.hour-pill:hover {
+    color: #fff;
+    border-color: var(--accent);
+    background: rgba(79, 195, 247, 0.1);
+}
+
+.hour-pill.active {
+    background: var(--accent);
+    color: #0b1318;
+    font-weight: 700;
+    border-color: var(--accent);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+/* Grouped Clips List */
+.rec-timeline-grouped {
+    max-height: 380px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-right: 6px;
+}
+
+.timeline-hour-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: rgba(0, 0, 0, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+
+.hour-group-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.hour-group-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--accent);
+}
+
+.hour-group-meta {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+}
+
+.hour-group-clips {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 8px;
+}
+
+.timeline-clip-card {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: 6px;
@@ -1246,23 +1496,23 @@ body {
     transition: all 0.15s ease;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
 }
 
-.timeline-clip-btn:hover {
+.timeline-clip-card:hover {
     border-color: var(--accent);
     background: rgba(79, 195, 247, 0.1);
     transform: translateY(-1px);
 }
 
-.timeline-clip-btn.active {
+.timeline-clip-card.active {
     border-color: var(--accent);
-    background: rgba(79, 195, 247, 0.22);
-    box-shadow: 0 0 10px rgba(79, 195, 247, 0.3);
+    background: rgba(79, 195, 247, 0.25);
+    box-shadow: 0 0 10px rgba(79, 195, 247, 0.35);
 }
 
-.clip-time {
-    font-size: 0.88rem;
+.clip-time-row {
+    font-size: 0.86rem;
     font-weight: 700;
     color: #fff;
     display: flex;
@@ -1270,13 +1520,19 @@ body {
     gap: 4px;
 }
 
-.clip-meta {
+.clip-play-icon {
+    color: var(--accent);
+    font-size: 0.75rem;
+}
+
+.clip-meta-row {
+    display: flex;
+    justify-content: space-between;
     font-size: 0.7rem;
     color: var(--text-secondary);
 }
 
 .timeline-empty {
-    grid-column: 1 / -1;
     text-align: center;
     color: var(--text-secondary);
     font-size: 0.85rem;

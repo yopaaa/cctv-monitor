@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CCTV Monitor</title>
-    <link rel="stylesheet" href="css/style.css?v=2.1.0">
+    <link rel="stylesheet" href="css/style.css?v=2.2.0">
     <!-- HLS.js — untuk memutar HLS stream di browser (murni HTTP, tanpa WebSocket) -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
 </head>
@@ -128,13 +128,50 @@
                     </div>
                 </div>
 
-                <!-- Timeline Clips List Card -->
+                <!-- Timeline Card with 24H Interactive Bar, Hour Selector & Grouped Clips -->
                 <div class="rec-timeline-card">
-                    <div class="timeline-bar">
-                        <h3>⏱️ Garis Waktu Rekaman</h3>
-                        <span id="timeline-date-tag" class="timeline-badge">-</span>
+                    <div class="timeline-header-row">
+                        <div class="timeline-title-area">
+                            <h3>⏱️ Garis Waktu Rekaman</h3>
+                            <span id="timeline-date-tag" class="timeline-badge">-</span>
+                        </div>
+                        <div class="timeline-jump-area">
+                            <label for="rec-time-jump" class="jump-label">Lompat Waktu:</label>
+                            <input type="time" id="rec-time-jump" class="time-input" step="60" value="12:00">
+                            <button id="rec-time-jump-btn" class="jump-btn">Cari ➔</button>
+                        </div>
                     </div>
-                    <div id="rec-timeline-grid" class="rec-timeline-grid">
+
+                    <!-- Interactive 24-Hour Scrubber Bar -->
+                    <div class="timeline-scrubber-wrapper">
+                        <div id="timeline-scrubber" class="timeline-scrubber" title="Klik di mana saja pada bilah untuk memutar waktu tersebut">
+                            <div id="scrubber-segments" class="scrubber-segments"></div>
+                            <div id="scrubber-playhead" class="scrubber-playhead"></div>
+                            <div id="scrubber-tooltip" class="scrubber-tooltip">00:00</div>
+                        </div>
+                        <div class="scrubber-ticks">
+                            <span>00:00</span>
+                            <span>03:00</span>
+                            <span>06:00</span>
+                            <span>09:00</span>
+                            <span>12:00</span>
+                            <span>15:00</span>
+                            <span>18:00</span>
+                            <span>21:00</span>
+                            <span>24:00</span>
+                        </div>
+                    </div>
+
+                    <!-- Quick Hour Filter Pills -->
+                    <div class="hour-filter-wrapper">
+                        <span class="hour-filter-label">Filter Jam:</span>
+                        <div id="hour-filter-pills" class="hour-filter-pills">
+                            <!-- Generated dynamically by JS -->
+                        </div>
+                    </div>
+
+                    <!-- Grouped Clips List -->
+                    <div id="rec-timeline-grouped" class="rec-timeline-grouped">
                         <div class="timeline-empty">Pilih tanggal pada kalender untuk melihat rekaman</div>
                     </div>
                 </div>
@@ -191,6 +228,6 @@
         </div>
     </div>
 
-    <script src="js/app.js?v=2.1.0"></script>
+    <script src="js/app.js?v=2.2.0"></script>
 </body>
 </html>
