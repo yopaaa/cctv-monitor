@@ -9,6 +9,8 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -451,7 +453,8 @@ func (s *Server) handleRecordingTimeline(w http.ResponseWriter, r *http.Request)
 }
 
 // handleRecordingStream streams a recorded MP4 video using HTTP Range Requests (Status 206 Partial Content).
-// This transmits chunks on demand as the user watches or seeks, avoiding network lag and huge buffering.
+// Caps response chunk sizes (512KB for initial chunk, 1MB for subsequent) so slow tunnels/Cloudflare
+// don't get choked by full 20MB downloads, providing fast instant playback like YouTube.
 func (s *Server) handleRecordingStream(w http.ResponseWriter, r *http.Request) {
 	relPath := r.URL.Query().Get("file")
 	if relPath == "" {
@@ -472,6 +475,30 @@ func (s *Server) handleRecordingStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	file, err := os.Open(fullPath)
+	if err != nil {
+		log.Printf("[RECORDING] Open error for %q: %v", fullPath, err)
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"success": false,
+			"error":   "Gagal membuka file rekaman",
+		})
+		return
+	}
+	defer file.Close()
+
+	stat, err := file.Stat()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"success": false,
+			"error":   "Gagal membaca info file rekaman",
+		})
+		return
+	}
+
+	fileSize := stat.Size()
+	modTime := stat.ModTime()
+
+	// Anti-buffer headers for Cloudflare and proxies
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Headers", "Range, Authorization, Cache-Control")
 	w.Header().Set("Access-Control-Expose-Headers", "Content-Range, Content-Length, Accept-Ranges")
@@ -481,10 +508,98 @@ func (s *Server) handleRecordingStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Expires", "0")
 	w.Header().Set("Content-Type", "video/mp4")
 
-	log.Printf("[RECORDING] Streaming %s (Range: %s)", relPath, r.Header.Get("Range"))
+	if r.Method == http.MethodHead {
+		w.Header().Set("Content-Length", strconv.FormatInt(fileSize, 10))
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 
-	// http.ServeFile implements RFC 7233 range requests natively
-	http.ServeFile(w, r, fullPath)
+	rangeHeader := r.Header.Get("Range")
+	if rangeHeader == "" {
+		// If no Range header, use http.ServeContent which handles full file / caching
+		http.ServeContent(w, r, stat.Name(), modTime, file)
+		return
+	}
+
+	start, end, err := parseByteRange(rangeHeader, fileSize)
+	if err != nil {
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", fileSize))
+		http.Error(w, "Requested Range Not Satisfiable", http.StatusRequestedRangeNotSatisfiable)
+		return
+	}
+
+	// Dynamic chunk capping:
+	// Initial chunk (start == 0): 512KB for instant playback startup
+	// Subsequent chunks: 1MB for smooth playback buffering
+	maxChunk := int64(1024 * 1024) // 1MB
+	if start == 0 {
+		maxChunk = int64(512 * 1024) // 512KB
+	}
+
+	if end-start+1 > maxChunk {
+		end = start + maxChunk - 1
+	}
+	if end >= fileSize {
+		end = fileSize - 1
+	}
+
+	chunkLength := end - start + 1
+
+	w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, fileSize))
+	w.Header().Set("Content-Length", strconv.FormatInt(chunkLength, 10))
+	w.WriteHeader(http.StatusPartialContent)
+
+	if _, err := file.Seek(start, io.SeekStart); err != nil {
+		log.Printf("[RECORDING] Seek error: %v", err)
+		return
+	}
+
+	log.Printf("[RECORDING] Stream %s bytes %d-%d/%d (%d KB)", stat.Name(), start, end, fileSize, chunkLength/1024)
+	_, _ = io.CopyN(w, file, chunkLength)
+}
+
+func parseByteRange(rangeHeader string, size int64) (start, end int64, err error) {
+	if !strings.HasPrefix(rangeHeader, "bytes=") {
+		return 0, 0, fmt.Errorf("invalid range unit")
+	}
+	raw := strings.TrimPrefix(rangeHeader, "bytes=")
+	if idx := strings.Index(raw, ","); idx != -1 {
+		raw = raw[:idx]
+	}
+	parts := strings.Split(raw, "-")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("invalid range format")
+	}
+
+	if parts[0] == "" {
+		suffix, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil || suffix <= 0 {
+			return 0, 0, fmt.Errorf("invalid suffix range")
+		}
+		if suffix > size {
+			suffix = size
+		}
+		return size - suffix, size - 1, nil
+	}
+
+	start, err = strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || start < 0 || start >= size {
+		return 0, 0, fmt.Errorf("invalid start range")
+	}
+
+	if parts[1] == "" {
+		return start, size - 1, nil
+	}
+
+	end, err = strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || end < start {
+		return 0, 0, fmt.Errorf("invalid end range")
+	}
+	if end >= size {
+		end = size - 1
+	}
+
+	return start, end, nil
 }
 
 func triggerHTTPAlarm(method, targetURL, username, password string) error {

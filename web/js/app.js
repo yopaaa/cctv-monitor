@@ -1196,6 +1196,9 @@
         recVideoPlayer.addEventListener("canplay", function () {
             if (recVideoLoading) recVideoLoading.classList.add("hidden");
         });
+        recVideoPlayer.addEventListener("loadeddata", function () {
+            if (recVideoLoading) recVideoLoading.classList.add("hidden");
+        });
         recVideoPlayer.addEventListener("error", function () {
             if (recVideoLoading) recVideoLoading.classList.add("hidden");
             if (recVideoError) {
