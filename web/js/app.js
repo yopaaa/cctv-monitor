@@ -900,6 +900,7 @@
 
     function selectRecordingDate(dateISO) {
         recSelectedDate = dateISO;
+        selectedHourFilter = "all";
 
         var parts = dateISO.split("-");
         var displayLabel = parts.length === 3 ? parts[2] + " " + MONTH_NAMES[parseInt(parts[1], 10) - 1] + " " + parts[0] : dateISO;
@@ -912,7 +913,9 @@
     }
 
     function loadTimelineClips(camID, dateISO) {
-        recTimelineGrid.innerHTML = '<div class="timeline-empty">Memuat rekaman...</div>';
+        if (recTimelineGrouped) {
+            recTimelineGrouped.innerHTML = '<div class="timeline-empty">Memuat rekaman...</div>';
+        }
         recCurrentClipIndex = -1;
 
         var url = "/api/recordings/timeline?camera=" + encodeURIComponent(camID) + "&date=" + encodeURIComponent(dateISO);
@@ -924,7 +927,9 @@
                 renderTimelineClips();
             })
             .catch(function (err) {
-                recTimelineGrid.innerHTML = '<div class="timeline-empty">Gagal memuat: ' + err.message + '</div>';
+                if (recTimelineGrouped) {
+                    recTimelineGrouped.innerHTML = '<div class="timeline-empty">Gagal memuat: ' + err.message + '</div>';
+                }
             });
     }
 
@@ -1357,6 +1362,12 @@
 
             pollTimer = setInterval(pollStatus, POLL_INTERVAL);
         });
+
+        if (window.location.hash === "#rekaman" || window.location.search.indexOf("tab=rekaman") !== -1) {
+            switchView("recordings");
+        } else {
+            setTimeout(initRecordingsView, 500);
+        }
     }
 
     function pollStatus() {
@@ -1382,6 +1393,15 @@
             });
         });
     }
+
+    // Auto-switch to recordings if requested in URL hash or query param
+    window.addEventListener("hashchange", function () {
+        if (window.location.hash === "#rekaman") {
+            switchView("recordings");
+        } else if (window.location.hash === "#live" || !window.location.hash) {
+            switchView("live");
+        }
+    });
 
     // Start App by checking Auth
     checkAuthAndStart();
