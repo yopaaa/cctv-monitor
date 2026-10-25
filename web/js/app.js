@@ -18,7 +18,7 @@
     "use strict";
 
     var POLL_INTERVAL = 5000;
-    var THUMB_INTERVAL = 10000;
+    var THUMB_INTERVAL = 5000;
     var RETRY_DELAY = 3000;
 
     // DOM Elements — Dashboard & Navigation
@@ -387,11 +387,27 @@
     function startThumbRefresh(camId) {
         if (thumbTimers[camId]) clearInterval(thumbTimers[camId]);
 
+        // Preload thumbnail off-screen to prevent flickering and avoid disappearing on network lag
         thumbTimers[camId] = setInterval(function () {
             var thumb = document.getElementById("thumb-" + camId);
-            if (thumb) {
-                thumb.src = getAuthenticatedUrl("/streams/" + camId + "/thumbnail.jpg?t=" + Date.now());
-            }
+            if (!thumb) return;
+
+            var newUrl = getAuthenticatedUrl("/streams/" + camId + "/thumbnail.jpg?t=" + Date.now());
+            var preloader = new Image();
+
+            preloader.onload = function () {
+                thumb.src = newUrl;
+                thumb.style.display = "block";
+                var card = document.getElementById("card-" + camId);
+                if (card) {
+                    var placeholder = card.querySelector(".camera-placeholder");
+                    if (placeholder) placeholder.style.display = "none";
+                }
+            };
+            preloader.onerror = function () {
+                // Keep the current thumbnail visible on transient network hiccups
+            };
+            preloader.src = newUrl;
         }, THUMB_INTERVAL);
     }
 

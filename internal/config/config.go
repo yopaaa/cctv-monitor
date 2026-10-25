@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"gopkg.in/yaml.v3"
 )
@@ -49,7 +50,8 @@ type AuthConfig struct {
 
 // RecordingsConfig holds settings for CCTV video recordings storage.
 type RecordingsConfig struct {
-	Dir string `yaml:"dir"` // Directory path to recordings (e.g. ./rekaman_cctv or /mnt/nvr_storage)
+	Dir                 string `yaml:"dir"`             // Directory path to recordings (e.g. ./rekaman_cctv or /mnt/nvr_storage)
+	TimezoneOffsetHours int    `yaml:"timezone_offset"` // Timezone offset in hours relative to UTC (default: 7 for UTC+7 / WIB)
 }
 
 // Config is the top-level application configuration.
@@ -92,6 +94,16 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Recordings.Dir == "" {
 		cfg.Recordings.Dir = "./rekaman_cctv"
+	}
+
+	// Environment variable override for recordings timezone offset
+	if envTZ := os.Getenv("RECORDINGS_TIMEZONE_OFFSET"); envTZ != "" {
+		if val, err := strconv.Atoi(envTZ); err == nil {
+			cfg.Recordings.TimezoneOffsetHours = val
+		}
+	}
+	if cfg.Recordings.TimezoneOffsetHours == 0 {
+		cfg.Recordings.TimezoneOffsetHours = 7 // Default UTC+7 (WIB)
 	}
 
 	// Validate

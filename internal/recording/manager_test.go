@@ -72,7 +72,7 @@ func TestRecordingManager(t *testing.T) {
 	if len(clips) != 2 {
 		t.Fatalf("expected 2 clips for 2026-10-24, got %d", len(clips))
 	}
-	if clips[0].TimeLabel != "13:40" || clips[1].TimeLabel != "13:45" {
+	if clips[0].TimeLabel != "20:40" || clips[1].TimeLabel != "20:45" {
 		t.Errorf("unexpected clip ordering: %s, %s", clips[0].TimeLabel, clips[1].TimeLabel)
 	}
 

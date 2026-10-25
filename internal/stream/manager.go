@@ -272,18 +272,19 @@ func (m *Manager) GetCamera(id string) (config.Camera, bool) {
 	return config.Camera{}, false
 }
 
-// thumbnailLoop periodically extracts a JPEG thumbnail from the latest HLS segment.
+// thumbnailLoop periodically extracts a JPEG thumbnail from the latest completed HLS segment.
 // This runs independently from the main stream loop.
-// The thumbnail is saved as thumbnail.jpg in the camera's stream directory.
+// The thumbnail is saved as thumbnail.jpg in the camera's stream directory atomically.
 func (m *Manager) thumbnailLoop(ctx context.Context, proc *cameraProcess) {
 	camID := proc.camera.ID
 	dir := filepath.Join(m.cfg.Server.StreamsDir, camID)
 	thumbPath := filepath.Join(dir, "thumbnail.jpg")
+	tempThumbPath := filepath.Join(dir, "thumbnail.tmp.jpg")
 
-	// Initial delay to let FFmpeg produce the first segment
-	sleepOrCancel(ctx, 5*time.Second)
+	// Initial delay to let FFmpeg produce the first segments
+	sleepOrCancel(ctx, 3*time.Second)
 
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -302,21 +303,28 @@ func (m *Manager) thumbnailLoop(ctx context.Context, proc *cameraProcess) {
 				continue
 			}
 			sort.Strings(segments)
-			latest := segments[len(segments)-1]
 
-			// Extract 1 frame from the latest segment as JPEG
+			// Pick completed segment (avoiding the one currently being written by FFmpeg)
+			target := segments[len(segments)-1]
+			if len(segments) >= 2 {
+				target = segments[len(segments)-2]
+			}
+
+			// Extract 1 frame as JPEG to a temp file, then atomic rename
 			cmd := exec.CommandContext(ctx, "ffmpeg",
 				"-hide_banner", "-loglevel", "error",
-				"-i", latest,
+				"-i", target,
 				"-frames:v", "1",
 				"-q:v", "5",
 				"-y",
-				thumbPath,
+				tempThumbPath,
 			)
 			cmd.Stdout = nil
 			cmd.Stderr = nil
 			if err := cmd.Run(); err != nil {
 				log.Printf("[%s] Thumbnail extraction failed: %v", camID, err)
+			} else {
+				_ = os.Rename(tempThumbPath, thumbPath)
 			}
 		}
 	}

@@ -80,7 +80,7 @@ func (s *Server) routes() {
 	streamsHandler := http.StripPrefix("/streams/", http.FileServer(streamsDir))
 	s.mux.HandleFunc("/streams/", s.requireAuth(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		w.Header().Set("Cache-Control", "private, no-cache, no-store, must-revalidate, no-transform")
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Expires", "0")
 

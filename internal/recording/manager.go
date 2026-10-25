@@ -39,6 +39,7 @@ type CameraRecordingInfo struct {
 type Manager struct {
 	cfg     *config.Config
 	baseDir string
+	tzLoc   *time.Location
 	mu      sync.RWMutex
 }
 
@@ -49,9 +50,16 @@ func NewManager(cfg *config.Config) *Manager {
 		dir = "./rekaman_cctv"
 	}
 
+	offset := cfg.Recordings.TimezoneOffsetHours
+	if offset == 0 {
+		offset = 7 // Default UTC+7 (WIB)
+	}
+	loc := time.FixedZone(fmt.Sprintf("UTC%+d", offset), offset*3600)
+
 	return &Manager{
 		cfg:     cfg,
 		baseDir: filepath.Clean(dir),
+		tzLoc:   loc,
 	}
 }
 
@@ -163,7 +171,7 @@ func (m *Manager) GetDates(cameraID string) []string {
 		if !m.matchesCamera(cameraID, camID) {
 			return
 		}
-		date, _, _, ok := parseShinobiFilename(info.Name())
+		date, _, _, ok := m.parseShinobiFilename(info.Name())
 		if ok {
 			dateSet[date] = true
 		}
@@ -198,7 +206,7 @@ func (m *Manager) GetClips(cameraID, date string) []VideoClip {
 			return
 		}
 
-		fileDate, timeStr, timeLabel, ok := parseShinobiFilename(info.Name())
+		fileDate, timeStr, timeLabel, ok := m.parseShinobiFilename(info.Name())
 		if !ok {
 			return
 		}
@@ -340,7 +348,18 @@ func (m *Manager) scanRecordings(fn func(cameraID string, relPath string, info f
 }
 
 // parseShinobiFilename extracts date and time from Shinobi filenames like "2026-10-24T13-40-00.mp4".
+// Shinobi records timestamps in UTC (GMT+0). This converts them to the target timezone (e.g. UTC+7 / WIB).
+func (m *Manager) parseShinobiFilename(name string) (dateStr, timeStr, timeLabel string, ok bool) {
+	return parseShinobiFilenameWithLocation(name, m.tzLoc)
+}
+
+// parseShinobiFilename extracts date and time using default UTC+7 if called without manager instance.
 func parseShinobiFilename(name string) (dateStr, timeStr, timeLabel string, ok bool) {
+	loc := time.FixedZone("WIB", 7*3600)
+	return parseShinobiFilenameWithLocation(name, loc)
+}
+
+func parseShinobiFilenameWithLocation(name string, loc *time.Location) (dateStr, timeStr, timeLabel string, ok bool) {
 	base := strings.TrimSuffix(name, filepath.Ext(name))
 
 	// Match Shinobi pattern YYYY-MM-DDTHH-mm-ss
@@ -350,29 +369,28 @@ func parseShinobiFilename(name string) (dateStr, timeStr, timeLabel string, ok b
 	}
 
 	datePart := parts[0]
-	if len(datePart) != 10 || datePart[4] != '-' || datePart[7] != '-' {
-		return "", "", "", false
-	}
-
-	// Validate date values
-	if _, err := time.Parse("2006-01-02", datePart); err != nil {
-		return "", "", "", false
-	}
-
 	timePart := parts[1]
-	if len(timePart) < 8 {
+
+	if len(datePart) != 10 || len(timePart) < 8 {
 		return "", "", "", false
 	}
 
-	// Extract HH, mm, ss
-	hh := timePart[0:2]
-	mm := timePart[3:5]
-	ss := timePart[6:8]
+	// Reconstruct standard ISO timestamp: YYYY-MM-DDTHH:mm:ss
+	isoStr := fmt.Sprintf("%sT%s:%s:%s", datePart, timePart[0:2], timePart[3:5], timePart[6:8])
 
-	formattedTime := fmt.Sprintf("%s:%s:%s", hh, mm, ss)
-	label := fmt.Sprintf("%s:%s", hh, mm)
+	// Shinobi names files in UTC
+	utcTime, err := time.ParseInLocation("2006-01-02T15:04:05", isoStr, time.UTC)
+	if err != nil {
+		return "", "", "", false
+	}
 
-	return datePart, formattedTime, label, true
+	// Convert to target timezone (e.g. UTC+7)
+	targetTime := utcTime
+	if loc != nil {
+		targetTime = utcTime.In(loc)
+	}
+
+	return targetTime.Format("2006-01-02"), targetTime.Format("15:04:05"), targetTime.Format("15:04"), true
 }
 
 // formatBytes formats byte sizes into readable string representations.
