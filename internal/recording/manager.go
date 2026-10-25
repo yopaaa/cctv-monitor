@@ -77,6 +77,9 @@ func (m *Manager) GetCameras() []CameraRecordingInfo {
 	nameMap := make(map[string]string)
 	for _, cam := range m.cfg.Cameras {
 		nameMap[cam.ID] = cam.Name
+		if cam.ShinobiID != "" {
+			nameMap[cam.ShinobiID] = cam.Name
+		}
 	}
 
 	// Sort camera IDs for consistent UI display
@@ -90,7 +93,7 @@ func (m *Manager) GetCameras() []CameraRecordingInfo {
 		name := id
 		if friendly, ok := nameMap[id]; ok {
 			name = friendly
-		} else if id == "default" {
+		} else if id == "default" || (len(cameraCounts) == 1 && len(m.cfg.Cameras) == 1) {
 			if len(m.cfg.Cameras) > 0 {
 				name = m.cfg.Cameras[0].Name
 			} else {
@@ -108,6 +111,26 @@ func (m *Manager) GetCameras() []CameraRecordingInfo {
 	return result
 }
 
+// matchesCamera checks if a target camera ID matches the scanned camera ID,
+// taking into account camera ID, ShinobiID mapping, or single-camera fallback.
+func (m *Manager) matchesCamera(targetCamID, scannedCamID string) bool {
+	if targetCamID == "" || targetCamID == "all" || targetCamID == scannedCamID {
+		return true
+	}
+	for _, cam := range m.cfg.Cameras {
+		if cam.ID == targetCamID && cam.ShinobiID == scannedCamID {
+			return true
+		}
+		if cam.ShinobiID == targetCamID && cam.ID == scannedCamID {
+			return true
+		}
+	}
+	if len(m.cfg.Cameras) == 1 && (targetCamID == m.cfg.Cameras[0].ID || targetCamID == "default") {
+		return true
+	}
+	return false
+}
+
 // GetDates returns a sorted list of unique dates (YYYY-MM-DD) that have recordings for the specified camera.
 func (m *Manager) GetDates(cameraID string) []string {
 	m.mu.RLock()
@@ -116,7 +139,7 @@ func (m *Manager) GetDates(cameraID string) []string {
 	dateSet := make(map[string]bool)
 
 	m.scanRecordings(func(camID string, relPath string, info fs.FileInfo) {
-		if cameraID != "" && camID != cameraID && cameraID != "all" {
+		if !m.matchesCamera(cameraID, camID) {
 			return
 		}
 		date, _, _, ok := parseShinobiFilename(info.Name())
@@ -142,12 +165,15 @@ func (m *Manager) GetClips(cameraID, date string) []VideoClip {
 	nameMap := make(map[string]string)
 	for _, cam := range m.cfg.Cameras {
 		nameMap[cam.ID] = cam.Name
+		if cam.ShinobiID != "" {
+			nameMap[cam.ShinobiID] = cam.Name
+		}
 	}
 
 	var clips []VideoClip
 
 	m.scanRecordings(func(camID string, relPath string, info fs.FileInfo) {
-		if cameraID != "" && camID != cameraID && cameraID != "all" {
+		if !m.matchesCamera(cameraID, camID) {
 			return
 		}
 
@@ -163,7 +189,7 @@ func (m *Manager) GetClips(cameraID, date string) []VideoClip {
 		camName := camID
 		if friendly, exists := nameMap[camID]; exists {
 			camName = friendly
-		} else if camID == "default" {
+		} else if camID == "default" || len(m.cfg.Cameras) == 1 {
 			if len(m.cfg.Cameras) > 0 {
 				camName = m.cfg.Cameras[0].Name
 			} else {

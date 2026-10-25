@@ -30,13 +30,14 @@ type AlarmConfig struct {
 //   - Direct RTSP: set the URL field directly.
 //   - ONVIF Discovery: set OnvifURL, Username, and Password to auto-discover the RTSP URL.
 type Camera struct {
-	ID       string      `yaml:"id"`
-	Name     string      `yaml:"name"`
-	URL      string      `yaml:"url"`       // Direct RTSP stream URL
-	OnvifURL string      `yaml:"onvif_url"` // ONVIF device service URL for auto-discovery
-	Username string      `yaml:"username"`  // Camera credentials (used for ONVIF and/or RTSP)
-	Password string      `yaml:"password"`
-	Alarm    AlarmConfig `yaml:"alarm"`     // Alarm/siren configuration
+	ID        string      `yaml:"id"`
+	Name      string      `yaml:"name"`
+	ShinobiID string      `yaml:"shinobi_id"` // Optional: ID monitor di Shinobi (misal: ztIRNMjufs)
+	URL       string      `yaml:"url"`       // Direct RTSP stream URL
+	OnvifURL  string      `yaml:"onvif_url"` // ONVIF device service URL for auto-discovery
+	Username  string      `yaml:"username"`  // Camera credentials (used for ONVIF and/or RTSP)
+	Password  string      `yaml:"password"`
+	Alarm     AlarmConfig `yaml:"alarm"`     // Alarm/siren configuration
 }
 
 // AuthConfig holds dashboard authentication settings.

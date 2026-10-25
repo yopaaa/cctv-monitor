@@ -34,6 +34,7 @@ cameras:
 
   - id: cam1
     name: "Kamera Depan"
+    shinobi_id: "ztIRNMjufs"   # Opsional: ID monitor di Shinobi (contoh: /mnt/nvr_storage/{groupKey}/{monitorID})
     url: "rtsp://admin:password@192.168.1.100:554/live/ch00_1"
     username: "admin"
     password: "password"
