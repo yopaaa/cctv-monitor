@@ -1534,15 +1534,19 @@
             var item = document.createElement("div");
             item.className = "settings-camera-card";
 
-            var isRecording = cam.record !== false;
-            var modeLabel = cam.url ? "Direct RTSP" : (cam.onvif_url ? "ONVIF" : "Manual");
-            var urlDisplay = cam.url || cam.onvif_url || "-";
+            var camId = cam.id || cam.ID || "";
+            var camName = cam.name || cam.Name || "";
+            var camUrl = cam.url || cam.URL || "";
+            var camOnvif = cam.onvif_url || cam.OnvifURL || "";
+            var isRecording = cam.record !== undefined ? cam.record !== false : (cam.Record !== undefined ? cam.Record !== false : true);
+            var modeLabel = camUrl ? "Direct RTSP" : (camOnvif ? "ONVIF" : "Manual");
+            var urlDisplay = camUrl || camOnvif || "-";
 
             item.innerHTML =
                 '<div class="cam-info-col">' +
                     '<div class="cam-name-row">' +
-                        '<span class="cam-title-text">' + escapeHtml(cam.name) + '</span>' +
-                        '<span class="cam-id-pill">' + escapeHtml(cam.id) + '</span>' +
+                        '<span class="cam-title-text">' + escapeHtml(camName) + '</span>' +
+                        '<span class="cam-id-pill">' + escapeHtml(camId) + '</span>' +
                     '</div>' +
                     '<div class="cam-badges-row">' +
                         '<span class="badge-tag badge-mode">📡 ' + modeLabel + '</span>' +
@@ -1553,8 +1557,8 @@
                     '<span class="cam-url-preview" title="' + escapeHtml(urlDisplay) + '">' + escapeHtml(urlDisplay) + '</span>' +
                 '</div>' +
                 '<div class="cam-actions-col">' +
-                    '<button class="btn-secondary btn-edit-cam" data-id="' + escapeHtml(cam.id) + '">✏️ Edit</button>' +
-                    '<button class="btn-danger btn-del-cam" data-id="' + escapeHtml(cam.id) + '">🗑️ Hapus</button>' +
+                    '<button class="btn-secondary btn-edit-cam" data-id="' + escapeHtml(camId) + '">✏️ Edit</button>' +
+                    '<button class="btn-danger btn-del-cam" data-id="' + escapeHtml(camId) + '">🗑️ Hapus</button>' +
                 '</div>';
 
             cameraSettingsList.appendChild(item);
@@ -1565,7 +1569,7 @@
         editBtns.forEach(function (btn) {
             btn.addEventListener("click", function () {
                 var camId = this.getAttribute("data-id");
-                var cam = currentConfigCameras.find(function (c) { return c.id === camId; });
+                var cam = currentConfigCameras.find(function (c) { return (c.id || c.ID) === camId; });
                 if (cam) openCameraModal("edit", cam);
             });
         });
@@ -1583,7 +1587,7 @@
     function renderStorageInfo(storage) {
         if (!storage) return;
 
-        var pct = Math.round(storage.used_percent || 0);
+        var pct = Math.round(storage.used_percent || storage.UsedPercent || 0);
         if (storageProgressFill) {
             storageProgressFill.style.width = pct + "%";
             storageProgressFill.classList.remove("warning", "danger");
@@ -1594,14 +1598,19 @@
             }
         }
 
-        if (storageUsedLabel) storageUsedLabel.textContent = storage.used_formatted + " Terpakai";
-        if (storagePercentLabel) storagePercentLabel.textContent = pct + "%";
-        if (storageFreeLabel) storageFreeLabel.textContent = storage.free_formatted + " Sisa";
+        var usedFormatted = storage.used_formatted || storage.UsedFormatted || "0 B";
+        var freeFormatted = storage.free_formatted || storage.FreeFormatted || "0 B";
+        var totalFormatted = storage.total_formatted || storage.TotalFormatted || "-";
+        var storagePath = storage.path || storage.Path || "-";
 
-        if (storageTotalVal) storageTotalVal.textContent = storage.total_formatted;
-        if (storageUsedVal) storageUsedVal.textContent = storage.used_formatted;
-        if (storageFreeVal) storageFreeVal.textContent = storage.free_formatted;
-        if (storagePathVal) storagePathVal.textContent = storage.path;
+        if (storageUsedLabel) storageUsedLabel.textContent = usedFormatted + " Terpakai";
+        if (storagePercentLabel) storagePercentLabel.textContent = pct + "%";
+        if (storageFreeLabel) storageFreeLabel.textContent = freeFormatted + " Sisa";
+
+        if (storageTotalVal) storageTotalVal.textContent = totalFormatted;
+        if (storageUsedVal) storageUsedVal.textContent = usedFormatted;
+        if (storageFreeVal) storageFreeVal.textContent = freeFormatted;
+        if (storagePathVal) storagePathVal.textContent = storagePath;
     }
 
     if (btnRefreshStorage) {
@@ -1622,9 +1631,13 @@
     // Render Recording Settings
     function renderRecordingSettings(rec) {
         if (!rec) return;
-        if (nvrEnableCheck) nvrEnableCheck.checked = !!rec.enabled;
-        if (nvrSegmentSelect) nvrSegmentSelect.value = String(rec.segment_minutes || 5);
-        if (nvrRetentionSelect) nvrRetentionSelect.value = String(rec.retention_days || 7);
+        var isEnabled = rec.enabled !== undefined ? !!rec.enabled : (rec.Enabled !== undefined ? !!rec.Enabled : true);
+        var segMin = rec.segment_minutes !== undefined ? rec.segment_minutes : (rec.SegmentMinutes !== undefined ? rec.SegmentMinutes : 5);
+        var retDays = rec.retention_days !== undefined ? rec.retention_days : (rec.RetentionDays !== undefined ? rec.RetentionDays : 7);
+
+        if (nvrEnableCheck) nvrEnableCheck.checked = isEnabled;
+        if (nvrSegmentSelect) nvrSegmentSelect.value = String(segMin || 5);
+        if (nvrRetentionSelect) nvrRetentionSelect.value = String(retDays || 7);
     }
 
     // Save NVR Settings
@@ -1637,8 +1650,9 @@
             }
             if (btnSaveNvr) btnSaveNvr.disabled = true;
 
+            var isEnabled = nvrEnableCheck.checked;
             var payload = {
-                enabled: nvrEnableCheck.checked,
+                enabled: isEnabled,
                 segment_minutes: parseInt(nvrSegmentSelect.value, 10),
                 retention_days: parseInt(nvrRetentionSelect.value, 10)
             };
@@ -1652,6 +1666,11 @@
             .then(function (data) {
                 if (btnSaveNvr) btnSaveNvr.disabled = false;
                 if (data.success) {
+                    if (data.recording) {
+                        renderRecordingSettings(data.recording);
+                    } else {
+                        nvrEnableCheck.checked = isEnabled;
+                    }
                     if (nvrSaveMsg) {
                         nvrSaveMsg.textContent = "✅ Pengaturan NVR berhasil disimpan!";
                         nvrSaveMsg.className = "feedback-msg success";
@@ -1750,17 +1769,27 @@
             camInputAlarmOn.value = "";
             camInputRecord.checked = true;
         } else {
-            cameraModalTitle.textContent = "Edit Kamera: " + (cam.name || cam.id);
-            camInputName.value = cam.name || "";
-            camInputId.value = cam.id || "";
+            var camId = cam.id || cam.ID || "";
+            var camName = cam.name || cam.Name || "";
+            var camUrl = cam.url || cam.URL || "";
+            var camOnvif = cam.onvif_url || cam.OnvifURL || "";
+            var camUser = cam.username || cam.Username || "";
+            var camPass = cam.password || cam.Password || "";
+            var camRecord = cam.record !== undefined ? cam.record !== false : (cam.Record !== undefined ? cam.Record !== false : true);
+            var alarmMethod = (cam.alarm && (cam.alarm.method || cam.alarm.Method)) || (cam.Alarm && (cam.Alarm.method || cam.Alarm.Method)) || "onvif";
+            var alarmOn = (cam.alarm && (cam.alarm.on_url || cam.alarm.OnURL)) || (cam.Alarm && (cam.Alarm.on_url || cam.Alarm.OnURL)) || "";
+
+            cameraModalTitle.textContent = "Edit Kamera: " + (camName || camId);
+            camInputName.value = camName;
+            camInputId.value = camId;
             camInputId.readOnly = true;
-            camInputUrl.value = cam.url || "";
-            camInputOnvif.value = cam.onvif_url || "";
-            camInputUser.value = cam.username || "";
-            camInputPass.value = cam.password || "";
-            camInputAlarmMethod.value = (cam.alarm && cam.alarm.method) || "onvif";
-            camInputAlarmOn.value = (cam.alarm && cam.alarm.on_url) || "";
-            camInputRecord.checked = cam.record !== false;
+            camInputUrl.value = camUrl;
+            camInputOnvif.value = camOnvif;
+            camInputUser.value = camUser;
+            camInputPass.value = camPass;
+            camInputAlarmMethod.value = alarmMethod;
+            camInputAlarmOn.value = alarmOn;
+            camInputRecord.checked = camRecord;
         }
 
         cameraModalOverlay.classList.remove("hidden");

@@ -14,28 +14,28 @@ var configSaveMu sync.Mutex
 
 // ServerConfig holds HTTP server settings.
 type ServerConfig struct {
-	Port       int    `yaml:"port"`
-	StreamsDir string `yaml:"streams_dir"`
+	Port       int    `yaml:"port" json:"port"`
+	StreamsDir string `yaml:"streams_dir" json:"streams_dir"`
 }
 
 // AlarmConfig holds settings for controlling the camera's alarm/siren.
 type AlarmConfig struct {
-	Method string `yaml:"method"` // "onvif", "http_get", "http_post" (default: "onvif")
-	OnURL  string `yaml:"on_url"`  // URL untuk nyalakan alarm
-	OffURL string `yaml:"off_url"` // URL untuk matikan alarm
+	Method string `yaml:"method" json:"method"` // "onvif", "http_get", "http_post" (default: "onvif")
+	OnURL  string `yaml:"on_url" json:"on_url"`  // URL untuk nyalakan alarm
+	OffURL string `yaml:"off_url" json:"off_url"` // URL untuk matikan alarm
 }
 
 // Camera represents a single CCTV camera configuration.
 type Camera struct {
-	ID        string      `yaml:"id"`
-	Name      string      `yaml:"name"`
-	ShinobiID string      `yaml:"shinobi_id"`       // Optional: ID monitor di Shinobi (misal: ztIRNMjufs)
-	URL       string      `yaml:"url"`              // Direct RTSP stream URL
-	OnvifURL  string      `yaml:"onvif_url"`        // ONVIF device service URL for auto-discovery
-	Username  string      `yaml:"username"`         // Camera credentials (used for ONVIF and/or RTSP)
-	Password  string      `yaml:"password"`
-	Record    *bool       `yaml:"record,omitempty"` // Whether built-in NVR should record this camera (default true)
-	Alarm     AlarmConfig `yaml:"alarm"`            // Alarm/siren configuration
+	ID        string      `yaml:"id" json:"id"`
+	Name      string      `yaml:"name" json:"name"`
+	ShinobiID string      `yaml:"shinobi_id,omitempty" json:"shinobi_id,omitempty"` // Optional: ID monitor di Shinobi (misal: ztIRNMjufs)
+	URL       string      `yaml:"url" json:"url"`                                    // Direct RTSP stream URL
+	OnvifURL  string      `yaml:"onvif_url,omitempty" json:"onvif_url,omitempty"`    // ONVIF device service URL for auto-discovery
+	Username  string      `yaml:"username,omitempty" json:"username,omitempty"`      // Camera credentials (used for ONVIF and/or RTSP)
+	Password  string      `yaml:"password,omitempty" json:"password,omitempty"`
+	Record    *bool       `yaml:"record,omitempty" json:"record,omitempty"`          // Whether built-in NVR should record this camera (default true)
+	Alarm     AlarmConfig `yaml:"alarm,omitempty" json:"alarm,omitempty"`            // Alarm/siren configuration
 }
 
 // IsRecordingEnabled returns true if recording is enabled for this camera (default true).
@@ -48,27 +48,27 @@ func (c *Camera) IsRecordingEnabled() bool {
 
 // AuthConfig holds dashboard authentication settings.
 type AuthConfig struct {
-	Enabled  bool   `yaml:"enabled"`
-	Password string `yaml:"password"`
-	Email    string `yaml:"email"` // Default email/username
+	Enabled  bool   `yaml:"enabled" json:"enabled"`
+	Password string `yaml:"password" json:"password"`
+	Email    string `yaml:"email" json:"email"` // Default email/username
 }
 
 // RecordingsConfig holds settings for CCTV video recordings storage.
 type RecordingsConfig struct {
-	Enabled             bool   `yaml:"enabled"`               // Aktifkan built-in NVR recorder
-	Dir                 string `yaml:"dir"`                   // Directory path to recordings (e.g. ./rekaman_cctv or /mnt/nvr_storage)
-	SegmentMinutes      int    `yaml:"segment_minutes"`       // Durasi tiap potongan video rekaman (default: 5 menit)
-	RetentionDays       int    `yaml:"retention_days"`        // Berapa hari video disimpan sebelum auto-delete (default: 7 hari)
-	TimezoneOffsetHours int    `yaml:"timezone_offset"`       // Timezone offset in hours relative to UTC (default: 7 for UTC+7 / WIB)
+	Enabled             bool   `yaml:"enabled" json:"enabled"`                             // Aktifkan built-in NVR recorder
+	Dir                 string `yaml:"dir" json:"dir"`                                     // Directory path to recordings (e.g. ./rekaman_cctv or /mnt/nvr_storage)
+	SegmentMinutes      int    `yaml:"segment_minutes" json:"segment_minutes"`             // Durasi tiap potongan video rekaman (default: 5 menit)
+	RetentionDays       int    `yaml:"retention_days" json:"retention_days"`               // Berapa hari video disimpan sebelum auto-delete (default: 7 hari)
+	TimezoneOffsetHours int    `yaml:"timezone_offset" json:"timezone_offset"`             // Timezone offset in hours relative to UTC (default: 7 for UTC+7 / WIB)
 }
 
 // Config is the top-level application configuration.
 type Config struct {
-	Server     ServerConfig     `yaml:"server"`
-	Auth       AuthConfig       `yaml:"auth"`
-	Recordings RecordingsConfig `yaml:"recordings"`
-	Cameras    []Camera         `yaml:"cameras"`
-	ConfigPath string           `yaml:"-"` // Path file config saat ini
+	Server     ServerConfig     `yaml:"server" json:"server"`
+	Auth       AuthConfig       `yaml:"auth" json:"auth"`
+	Recordings RecordingsConfig `yaml:"recordings" json:"recordings"`
+	Cameras    []Camera         `yaml:"cameras" json:"cameras"`
+	ConfigPath string           `yaml:"-" json:"-"` // Path file config saat ini
 }
 
 // Load reads and validates the configuration from a YAML file.

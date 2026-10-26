@@ -104,6 +104,25 @@ func TestSettingsAPI(t *testing.T) {
 		t.Errorf("Unexpected cameras: %+v", settingsResp.Cameras)
 	}
 
+	// Verify JSON keys are lowercase for frontend compatibility
+	var rawMap map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &rawMap); err != nil {
+		t.Fatalf("Unmarshal raw map: %v", err)
+	}
+	recMap, ok := rawMap["recording"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected 'recording' in JSON: %+v", rawMap)
+	}
+	if recMap["enabled"] != true {
+		t.Errorf("Expected raw JSON key 'enabled' to be true, got %v", recMap["enabled"])
+	}
+	if recMap["segment_minutes"] != float64(5) {
+		t.Errorf("Expected raw JSON key 'segment_minutes' to be 5, got %v", recMap["segment_minutes"])
+	}
+	if recMap["retention_days"] != float64(7) {
+		t.Errorf("Expected raw JSON key 'retention_days' to be 7, got %v", recMap["retention_days"])
+	}
+
 	// 2. POST /api/settings/cameras
 	newCamPayload := `{"id": "cam_new", "name": "New Camera", "url": "rtsp://127.0.0.1:8554/cam2"}`
 	req = httptest.NewRequest("POST", "/api/settings/cameras", bytes.NewBufferString(newCamPayload))

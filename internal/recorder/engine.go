@@ -164,7 +164,13 @@ func (e *Engine) startCamera(ctx context.Context, cam config.Camera) {
 		return
 	}
 
-	camCtx, cancel := context.WithCancel(ctx)
+	// Always bind to the server's parent context so ephemeral HTTP request contexts don't terminate recording
+	baseCtx := e.parentCtx
+	if baseCtx == nil {
+		baseCtx = context.Background()
+	}
+
+	camCtx, cancel := context.WithCancel(baseCtx)
 	proc := &recordProcess{
 		camera: cam,
 		cancel: cancel,
@@ -234,9 +240,11 @@ func (e *Engine) runFFmpegRecord(ctx context.Context, rtspURL, outPattern string
 		"-rtsp_transport", "tcp",
 		"-timeout", "5000000", // 5 seconds timeout
 		"-i", rtspURL,
-		// Stream copy (zero CPU re-encoding)
+		// Stream copy for video (zero CPU re-encoding)
 		"-c:v", "copy",
-		"-c:a", "copy",
+		// Encode audio to standard AAC (fixes missing extradata/AudioSpecificConfig from V380 RTSP)
+		"-c:a", "aac",
+		"-b:a", "64k",
 		// Segment muxer
 		"-f", "segment",
 		"-segment_time", strconv.Itoa(segmentSec),

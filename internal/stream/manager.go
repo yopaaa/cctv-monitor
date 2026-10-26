@@ -164,14 +164,12 @@ func (m *Manager) RemoveCamera(camID string) error {
 }
 
 func (m *Manager) startCameraLocked(ctx context.Context, cam config.Camera) {
-	if ctx == nil {
-		ctx = m.parentCtx
-	}
-	if ctx == nil {
-		ctx = context.Background()
+	baseCtx := m.parentCtx
+	if baseCtx == nil {
+		baseCtx = context.Background()
 	}
 
-	camCtx, loopCancel := context.WithCancel(ctx)
+	camCtx, loopCancel := context.WithCancel(baseCtx)
 	proc := &cameraProcess{
 		camera:     cam,
 		loopCancel: loopCancel,

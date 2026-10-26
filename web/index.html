@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CCTV Monitor</title>
-    <link rel="stylesheet" href="css/style.css?v=2.3.0">
+    <link rel="stylesheet" href="css/style.css?v=2.3.1">
     <!-- HLS.js — untuk memutar HLS stream di browser (murni HTTP, tanpa WebSocket) -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
 </head>
@@ -273,16 +273,16 @@
                 <div class="settings-card form-card">
                     <h3>Pengaturan Built-in NVR Recorder</h3>
                     <form id="form-nvr-settings">
-                        <div class="form-check-group">
-                            <label class="toggle-switch">
+                        <label class="form-check-group" for="nvr-enable-check" style="cursor: pointer;">
+                            <div class="toggle-switch">
                                 <input type="checkbox" id="nvr-enable-check" checked>
                                 <span class="toggle-slider"></span>
-                            </label>
+                            </div>
                             <div class="toggle-label-text">
                                 <strong>Aktifkan Perekam 24/7 Bawaan</strong>
                                 <p>FFmpeg akan merekam stream kamera secara otomatis tanpa re-encode (CPU ~0%).</p>
                             </div>
-                        </div>
+                        </label>
 
                         <div class="form-row">
                             <div class="form-group">
@@ -438,16 +438,16 @@
                     </details>
                 </div>
 
-                <div class="form-check-group mt-2">
-                    <label class="toggle-switch">
+                <label class="form-check-group mt-2" for="cam-input-record" style="cursor: pointer;">
+                    <div class="toggle-switch">
                         <input type="checkbox" id="cam-input-record" checked>
                         <span class="toggle-slider"></span>
-                    </label>
+                    </div>
                     <div class="toggle-label-text">
                         <strong>Rekam Kamera Ini (Built-in NVR 24/7)</strong>
                         <p>Simpan rekaman video kamera ini secara otomatis ke penyimpanan lokal.</p>
                     </div>
-                </div>
+                </label>
 
                 <div class="test-connection-box">
                     <button type="button" id="btn-test-rtsp" class="btn-secondary">
@@ -493,6 +493,6 @@
         </div>
     </div>
 
-    <script src="js/app.js?v=2.3.0"></script>
+    <script src="js/app.js?v=2.3.1"></script>
 </body>
 </html>
