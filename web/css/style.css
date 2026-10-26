@@ -29,6 +29,8 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     min-height: 100vh;
     overflow-x: hidden;
+    padding-bottom: 84px;
+    box-sizing: border-box;
 }
 
 /* ========== Toolbar ========== */
@@ -37,13 +39,13 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 16px;
+    padding: 8px 18px;
     background: var(--bg-secondary);
     border-bottom: 1px solid var(--border-color);
     position: sticky;
     top: 0;
     z-index: 100;
-    min-height: 52px;
+    min-height: 54px;
     gap: 12px;
     box-sizing: border-box;
 }
@@ -51,20 +53,40 @@ body {
 .toolbar-left {
     display: flex;
     align-items: center;
-    gap: 8px;
     min-width: 0;
-    flex-shrink: 1;
+}
+
+.toolbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    user-select: none;
+}
+
+.toolbar-logo-img {
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    object-fit: cover;
+    box-shadow: 0 0 12px rgba(79, 195, 247, 0.4);
+    border: 1px solid rgba(79, 195, 247, 0.35);
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+}
+
+.toolbar-logo-img:hover {
+    transform: scale(1.05);
 }
 
 .toolbar-title {
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--accent);
+    font-size: 1.12rem;
+    font-weight: 700;
+    color: #fff;
     margin: 0;
     white-space: nowrap;
     display: flex;
     align-items: center;
-    gap: 6px;
+    letter-spacing: 0.3px;
 }
 
 .toolbar-right {
@@ -565,6 +587,12 @@ body {
         gap: 6px;
     }
 
+    .toolbar-logo-img {
+        width: 28px;
+        height: 28px;
+        border-radius: 7px;
+    }
+
     .toolbar-title {
         font-size: 0.92rem;
     }
@@ -629,6 +657,86 @@ body {
         padding: 6px 10px;
         font-size: 0.75rem;
     }
+
+    /* Rekaman View Mobile */
+    .recordings-layout {
+        padding: 8px;
+        gap: 12px;
+    }
+
+    .sidebar-card {
+        padding: 12px;
+        border-radius: 8px;
+        gap: 10px;
+    }
+
+    .rec-timeline-card {
+        padding: 12px;
+        border-radius: 8px;
+        gap: 10px;
+    }
+
+    .timeline-title-area h3 {
+        font-size: 0.92rem;
+    }
+
+    .timeline-jump-area {
+        width: 100%;
+        justify-content: flex-end;
+    }
+
+    .hour-group-clips {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 6px;
+    }
+
+    .timeline-clip-card {
+        padding: 6px 8px;
+    }
+
+    .clip-time-row {
+        font-size: 0.8rem;
+    }
+
+    .clip-meta-row {
+        font-size: 0.64rem;
+    }
+
+    .hour-filter-wrapper {
+        gap: 6px;
+    }
+
+    .hour-pill {
+        padding: 3px 8px;
+        font-size: 0.72rem;
+    }
+
+    /* Settings View Mobile */
+    .settings-container {
+        padding: 14px 10px 70px 10px;
+    }
+
+    .settings-nav-tabs {
+        width: 100%;
+        overflow-x: auto;
+        padding-bottom: 4px;
+        scrollbar-width: none;
+    }
+
+    .set-tab-btn {
+        padding: 7px 12px;
+        font-size: 0.76rem;
+        white-space: nowrap;
+    }
+
+    .settings-card {
+        padding: 14px 12px;
+    }
+
+    .storage-details-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
 }
 
 /* Layar HP Sangat Kecil (< 360px) */
@@ -678,6 +786,17 @@ body {
     margin-bottom: 12px;
     display: inline-block;
     filter: drop-shadow(0 2px 8px rgba(79, 195, 247, 0.4));
+}
+
+.login-logo-img {
+    width: 76px;
+    height: 76px;
+    border-radius: 18px;
+    object-fit: cover;
+    box-shadow: 0 0 25px rgba(79, 195, 247, 0.45);
+    border: 2px solid rgba(79, 195, 247, 0.35);
+    margin: 0 auto 16px auto;
+    display: block;
 }
 
 .login-card h2 {
@@ -809,45 +928,136 @@ body {
     text-align: center;
 }
 
-/* ========== Toolbar Nav Switcher (Live vs Rekaman) ========== */
+/* ========== Bottom Navigation Bar (Live vs Rekaman vs Pengaturan) ========== */
 
-.toolbar-nav {
+.bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 62px;
+    background: rgba(14, 18, 25, 0.96);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border-top: 1px solid var(--border-color);
     display: flex;
+    justify-content: space-around;
     align-items: center;
-    gap: 4px;
-    background: rgba(0, 0, 0, 0.35);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 3px;
-    margin-left: 10px;
+    z-index: 1000;
+    padding: 0 10px calc(env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.55);
+    box-sizing: border-box;
 }
 
-.nav-tab-btn {
+@media (min-width: 769px) {
+    .bottom-nav {
+        left: 50%;
+        transform: translateX(-50%);
+        right: auto;
+        width: auto;
+        min-width: 420px;
+        bottom: 20px;
+        height: 52px;
+        border-radius: 30px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        box-shadow: 0 10px 32px rgba(0, 0, 0, 0.7), 0 0 18px rgba(79, 195, 247, 0.18);
+        padding: 0 16px;
+        gap: 8px;
+    }
+}
+
+.bottom-nav-item {
+    flex: 1;
+    max-width: 140px;
+    height: 100%;
     background: transparent;
     border: none;
     color: var(--text-secondary);
-    padding: 5px 12px;
-    border-radius: 6px;
-    font-size: 0.82rem;
-    font-weight: 500;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
     cursor: pointer;
-    transition: all 0.2s ease;
+    position: relative;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    padding: 5px 8px;
+    border-radius: 12px;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.bottom-nav-icon {
     display: flex;
     align-items: center;
-    gap: 5px;
-    white-space: nowrap;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    transition: all 0.2s ease;
 }
 
-.nav-tab-btn:hover {
+.bottom-nav-icon svg {
+    width: 21px;
+    height: 21px;
+    stroke: currentColor;
+    transition: all 0.2s ease;
+}
+
+.bottom-nav-label {
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.2px;
+    transition: all 0.2s ease;
+}
+
+.bottom-nav-item:hover {
     color: var(--text-primary);
-    background: rgba(255, 255, 255, 0.05);
 }
 
-.nav-tab-btn.active {
-    background: var(--accent);
-    color: #0b1318;
+.bottom-nav-item.active {
+    color: var(--accent);
+}
+
+.bottom-nav-item.active .bottom-nav-icon svg {
+    stroke: var(--accent);
+    filter: drop-shadow(0 0 6px rgba(79, 195, 247, 0.75));
+    transform: translateY(-1px);
+}
+
+.bottom-nav-item.active .bottom-nav-label {
     font-weight: 700;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    color: #fff;
+}
+
+/* Active indicator bar on mobile */
+.bottom-nav-item.active::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    width: 20px;
+    height: 3px;
+    background: var(--accent);
+    border-radius: 3px;
+    box-shadow: 0 0 8px var(--accent);
+}
+
+@media (min-width: 769px) {
+    .bottom-nav-item {
+        flex-direction: row;
+        gap: 8px;
+        padding: 6px 18px;
+        border-radius: 20px;
+        height: 38px;
+    }
+    .bottom-nav-item.active {
+        background: rgba(79, 195, 247, 0.18);
+        border: 1px solid rgba(79, 195, 247, 0.4);
+    }
+    .bottom-nav-item.active::after {
+        display: none;
+    }
+    .bottom-nav-label {
+        font-size: 0.84rem;
+    }
 }
 
 /* ========== View Section Switcher ========== */
