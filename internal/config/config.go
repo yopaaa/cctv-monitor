@@ -62,11 +62,18 @@ type RecordingsConfig struct {
 	TimezoneOffsetHours int    `yaml:"timezone_offset" json:"timezone_offset"`             // Timezone offset in hours relative to UTC (default: 7 for UTC+7 / WIB)
 }
 
+// MotionConfig holds settings for lightweight motion detection.
+type MotionConfig struct {
+	Enabled     bool   `yaml:"enabled" json:"enabled"`         // Aktifkan deteksi gerakan
+	Sensitivity string `yaml:"sensitivity" json:"sensitivity"` // "low", "medium", "high"
+}
+
 // Config is the top-level application configuration.
 type Config struct {
 	Server     ServerConfig     `yaml:"server" json:"server"`
 	Auth       AuthConfig       `yaml:"auth" json:"auth"`
 	Recordings RecordingsConfig `yaml:"recordings" json:"recordings"`
+	Motion     MotionConfig     `yaml:"motion" json:"motion"`
 	Cameras    []Camera         `yaml:"cameras" json:"cameras"`
 	ConfigPath string           `yaml:"-" json:"-"` // Path file config saat ini
 }
@@ -88,6 +95,10 @@ func Load(path string) (*Config, error) {
 			Enabled:        true,
 			SegmentMinutes: 5,
 			RetentionDays:  7,
+		},
+		Motion: MotionConfig{
+			Enabled:     true,
+			Sensitivity: "medium",
 		},
 	}
 
@@ -129,6 +140,11 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Recordings.TimezoneOffsetHours == 0 {
 		cfg.Recordings.TimezoneOffsetHours = 7 // Default UTC+7 (WIB)
+	}
+
+	// Motion defaults
+	if cfg.Motion.Sensitivity == "" {
+		cfg.Motion.Sensitivity = "medium"
 	}
 
 	// Validate

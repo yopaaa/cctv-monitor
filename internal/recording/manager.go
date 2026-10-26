@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"cctv-monitor/internal/config"
+	"cctv-monitor/internal/motion"
 )
 
 // VideoClip represents a single recorded video segment (e.g. 5-minute chunk from Shinobi).
@@ -26,6 +27,7 @@ type VideoClip struct {
 	SizeBytes     int64  `json:"size_bytes"`
 	SizeFormatted string `json:"size_formatted"`
 	StreamURL     string `json:"stream_url"`
+	HasMotion     bool   `json:"has_motion"`
 }
 
 // CameraRecordingInfo holds information about a camera/monitor that has recordings.
@@ -37,10 +39,18 @@ type CameraRecordingInfo struct {
 
 // Manager handles scanning, listing, and accessing CCTV recordings from Shinobi or flat directories.
 type Manager struct {
-	cfg     *config.Config
-	baseDir string
-	tzLoc   *time.Location
-	mu      sync.RWMutex
+	cfg       *config.Config
+	baseDir   string
+	tzLoc     *time.Location
+	motionMgr *motion.EventManager
+	mu        sync.RWMutex
+}
+
+// SetEventManager sets the motion event manager for tagging clips with motion events.
+func (m *Manager) SetEventManager(mem *motion.EventManager) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.motionMgr = mem
 }
 
 // NewManager creates a new recordings Manager.
@@ -251,6 +261,47 @@ func (m *Manager) GetClips(cameraID, date string) []VideoClip {
 		}
 		return clips[i].Time < clips[j].Time
 	})
+
+	// If motion event manager is available, tag clips that have overlapping motion events
+	if m.motionMgr != nil && len(clips) > 0 {
+		eventsCache := make(map[string][]motion.Event)
+		segMin := m.cfg.Recordings.SegmentMinutes
+		if segMin <= 0 {
+			segMin = 5
+		}
+		segSec := segMin * 60
+
+		for i := range clips {
+			clip := &clips[i]
+			targetCam := clip.CameraID
+			cacheKey := targetCam + "_" + clip.Date
+			events, ok := eventsCache[cacheKey]
+			if !ok {
+				events = m.motionMgr.GetEvents(targetCam, clip.Date)
+				if len(events) == 0 && cameraID != "" && cameraID != "all" && cameraID != targetCam {
+					events = m.motionMgr.GetEvents(cameraID, clip.Date)
+				}
+				eventsCache[cacheKey] = events
+			}
+
+			if len(events) == 0 {
+				continue
+			}
+
+			var h, min, s int
+			n, _ := fmt.Sscanf(clip.Time, "%d:%d:%d", &h, &min, &s)
+			if n >= 2 {
+				clipStart := h*3600 + min*60 + s
+				clipEnd := clipStart + segSec
+				for _, ev := range events {
+					if ev.EndSec >= clipStart && ev.StartSec <= clipEnd {
+						clip.HasMotion = true
+						break
+					}
+				}
+			}
+		}
+	}
 
 	return clips
 }

@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"cctv-monitor/internal/config"
+	"cctv-monitor/internal/motion"
 	"cctv-monitor/internal/recorder"
 	"cctv-monitor/internal/recording"
 	"cctv-monitor/internal/server"
@@ -31,8 +32,16 @@ func main() {
 	// Initialize stream manager
 	mgr := stream.NewManager(cfg)
 
+	// Initialize motion event manager & detector
+	motionEvents := motion.NewEventManager(cfg)
+	motionDetector := motion.NewDetector(cfg, motionEvents)
+
+	// Wire motion detector as frame processor for live streams
+	mgr.SetFrameProcessor(motionDetector)
+
 	// Initialize recordings playback manager
 	recMgr := recording.NewManager(cfg)
+	recMgr.SetEventManager(motionEvents)
 	log.Printf("[INFO] Recordings storage path: %s", recMgr.BaseDir())
 
 	// Initialize built-in NVR recorder engine
@@ -51,7 +60,7 @@ func main() {
 	}
 
 	// Initialize HTTP server
-	srv := server.New(cfg, mgr, recMgr, recEngine)
+	srv := server.New(cfg, mgr, recMgr, recEngine, motionDetector, motionEvents)
 
 	// Graceful shutdown on SIGINT/SIGTERM
 	sigCh := make(chan os.Signal, 1)

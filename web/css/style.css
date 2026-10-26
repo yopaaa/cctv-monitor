@@ -1369,6 +1369,58 @@ body {
     filter: brightness(1.2);
 }
 
+/* Motion Detection Visualization on Scrubber */
+.scrubber-motion-segments {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    overflow: hidden;
+    border-radius: 5px;
+    pointer-events: none;
+    z-index: 2;
+}
+
+.scrubber-motion-block {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: #ff9800;
+    opacity: 0.88;
+    box-shadow: 0 0 6px rgba(255, 152, 0, 0.7);
+    border-radius: 1px;
+}
+
+.scrubber-legend {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    padding: 2px 2px 0 2px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.legend-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+    display: inline-block;
+}
+
+.legend-dot.rec {
+    background: #26c6da;
+    box-shadow: 0 0 4px rgba(38, 198, 218, 0.6);
+}
+
+.legend-dot.motion {
+    background: #ff9800;
+    box-shadow: 0 0 4px rgba(255, 152, 0, 0.8);
+}
+
 .scrubber-playhead {
     position: absolute;
     top: -3px;
@@ -1473,6 +1525,26 @@ body {
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
+.hour-pill.motion-pill {
+    border-color: rgba(255, 152, 0, 0.45);
+    color: #ffb74d;
+    background: rgba(255, 152, 0, 0.08);
+}
+
+.hour-pill.motion-pill:hover {
+    border-color: #ff9800;
+    background: rgba(255, 152, 0, 0.2);
+    color: #fff;
+}
+
+.hour-pill.motion-pill.active {
+    background: #ff9800;
+    color: #121212;
+    border-color: #ff9800;
+    box-shadow: 0 1px 6px rgba(255, 152, 0, 0.4);
+    font-weight: 700;
+}
+
 /* Grouped Clips List */
 .rec-timeline-grouped {
     max-height: 380px;
@@ -1544,6 +1616,24 @@ body {
     border-color: var(--accent);
     background: rgba(79, 195, 247, 0.25);
     box-shadow: 0 0 10px rgba(79, 195, 247, 0.35);
+}
+
+.timeline-clip-card.has-motion {
+    border-left: 3px solid #ff9800;
+}
+
+.clip-motion-badge {
+    margin-left: auto;
+    background: rgba(255, 152, 0, 0.18);
+    color: #ffb74d;
+    border: 1px solid rgba(255, 152, 0, 0.4);
+    font-size: 0.65rem;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 2px;
 }
 
 .clip-time-row {

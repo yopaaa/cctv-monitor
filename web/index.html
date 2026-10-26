@@ -155,6 +155,7 @@
                     <div class="timeline-scrubber-wrapper">
                         <div id="timeline-scrubber" class="timeline-scrubber" title="Klik di mana saja pada bilah untuk memutar waktu tersebut">
                             <div id="scrubber-segments" class="scrubber-segments"></div>
+                            <div id="scrubber-motion-segments" class="scrubber-motion-segments"></div>
                             <div id="scrubber-playhead" class="scrubber-playhead"></div>
                             <div id="scrubber-tooltip" class="scrubber-tooltip">00:00</div>
                         </div>
@@ -168,6 +169,10 @@
                             <span>18:00</span>
                             <span>21:00</span>
                             <span>24:00</span>
+                        </div>
+                        <div class="scrubber-legend">
+                            <span class="legend-item"><span class="legend-dot rec"></span> Rekaman</span>
+                            <span class="legend-item"><span class="legend-dot motion"></span> Gerakan Terdeteksi</span>
                         </div>
                     </div>
 
@@ -305,6 +310,29 @@
                                     <option value="30">30 Hari</option>
                                 </select>
                                 <span class="form-hint">Rekaman yang lebih tua akan otomatis dihapus untuk menghemat disk.</span>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 1.2rem; padding-top: 1.2rem; border-top: 1px solid var(--border-color);">
+                            <label class="form-check-group" for="nvr-motion-check" style="cursor: pointer;">
+                                <div class="toggle-switch">
+                                    <input type="checkbox" id="nvr-motion-check" checked>
+                                    <span class="toggle-slider"></span>
+                                </div>
+                                <div class="toggle-label-text">
+                                    <strong>Deteksi Gerakan (Motion Detection)</strong>
+                                    <p>Menganalisis perbedaan piksel frame secara real-time (CPU ~0.02%) dan menandai rekaman di timeline.</p>
+                                </div>
+                            </label>
+
+                            <div class="form-group" style="margin-top: 0.8rem;">
+                                <label for="nvr-motion-sensitivity-select">Sensitivitas Deteksi Gerakan:</label>
+                                <select id="nvr-motion-sensitivity-select" class="form-select">
+                                    <option value="high">Tinggi (Peka gerakan kecil)</option>
+                                    <option value="medium" selected>Sedang (Direkomendasikan)</option>
+                                    <option value="low">Rendah (Hanya gerakan besar)</option>
+                                </select>
+                                <span class="form-hint">Menentukan batas sensitivitas piksel untuk mengidentifikasi gerakan.</span>
                             </div>
                         </div>
 

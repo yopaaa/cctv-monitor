@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"cctv-monitor/internal/config"
+	"cctv-monitor/internal/motion"
 	"cctv-monitor/internal/onvif"
 	"cctv-monitor/internal/recorder"
 	"cctv-monitor/internal/recording"
@@ -30,24 +31,28 @@ const sessionDuration = 30 * 24 * time.Hour // 30 hari
 
 // Server is the HTTP server that serves the web dashboard and HLS streams.
 type Server struct {
-	cfg       *config.Config
-	mgr       *stream.Manager
-	recMgr    *recording.Manager
-	recEngine *recorder.Engine
-	mux       *http.ServeMux
-	sessions  map[string]time.Time
-	sessMu    sync.RWMutex
+	cfg            *config.Config
+	mgr            *stream.Manager
+	recMgr         *recording.Manager
+	recEngine      *recorder.Engine
+	motionDetector *motion.Detector
+	motionEvents   *motion.EventManager
+	mux            *http.ServeMux
+	sessions       map[string]time.Time
+	sessMu         sync.RWMutex
 }
 
 // New creates a new HTTP server with all routes configured.
-func New(cfg *config.Config, mgr *stream.Manager, recMgr *recording.Manager, recEngine *recorder.Engine) *Server {
+func New(cfg *config.Config, mgr *stream.Manager, recMgr *recording.Manager, recEngine *recorder.Engine, motionDetector *motion.Detector, motionEvents *motion.EventManager) *Server {
 	s := &Server{
-		cfg:       cfg,
-		mgr:       mgr,
-		recMgr:    recMgr,
-		recEngine: recEngine,
-		mux:       http.NewServeMux(),
-		sessions:  make(map[string]time.Time),
+		cfg:            cfg,
+		mgr:            mgr,
+		recMgr:         recMgr,
+		recEngine:      recEngine,
+		motionDetector: motionDetector,
+		motionEvents:   motionEvents,
+		mux:            http.NewServeMux(),
+		sessions:       make(map[string]time.Time),
 	}
 	s.routes()
 	return s
@@ -68,6 +73,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /api/recordings/cameras", s.requireAuth(s.handleRecordingCameras))
 	s.mux.HandleFunc("GET /api/recordings/dates", s.requireAuth(s.handleRecordingDates))
 	s.mux.HandleFunc("GET /api/recordings/timeline", s.requireAuth(s.handleRecordingTimeline))
+	s.mux.HandleFunc("GET /api/recordings/motion", s.requireAuth(s.handleRecordingMotion))
 	s.mux.HandleFunc("/api/recordings/stream", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -455,7 +461,7 @@ func (s *Server) handleRecordingDates(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, dates)
 }
 
-// handleRecordingTimeline returns the video clips for a camera and date, sorted chronologically.
+// handleRecordingTimeline returns the video clips and motion events for a camera and date.
 func (s *Server) handleRecordingTimeline(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -464,7 +470,39 @@ func (s *Server) handleRecordingTimeline(w http.ResponseWriter, r *http.Request)
 	date := r.URL.Query().Get("date")
 
 	clips := s.recMgr.GetClips(camID, date)
-	writeJSON(w, http.StatusOK, clips)
+
+	var events []motion.Event
+	if s.motionEvents != nil && camID != "" && date != "" {
+		events = s.motionEvents.GetEvents(camID, date)
+	}
+	if events == nil {
+		events = []motion.Event{}
+	}
+
+	response := map[string]interface{}{
+		"clips":         clips,
+		"motion_events": events,
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+// handleRecordingMotion returns detected motion intervals for a camera and date.
+func (s *Server) handleRecordingMotion(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-cache")
+
+	camID := r.URL.Query().Get("camera")
+	date := r.URL.Query().Get("date")
+
+	var events []motion.Event
+	if s.motionEvents != nil && camID != "" && date != "" {
+		events = s.motionEvents.GetEvents(camID, date)
+	}
+	if events == nil {
+		events = []motion.Event{}
+	}
+
+	writeJSON(w, http.StatusOK, events)
 }
 
 // handleRecordingStream streams a recorded MP4 video using HTTP Range Requests (Status 206 Partial Content).
@@ -657,6 +695,7 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	resp := map[string]interface{}{
 		"cameras":   s.cfg.Cameras,
 		"recording": s.cfg.Recordings,
+		"motion":    s.cfg.Motion,
 		"storage":   disk,
 	}
 	writeJSON(w, http.StatusOK, resp)
@@ -921,15 +960,17 @@ func (s *Server) handleTestCamera(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleUpdateRecordingSettings updates NVR recording preferences.
+// handleUpdateRecordingSettings updates NVR recording preferences and motion detection settings.
 func (s *Server) handleUpdateRecordingSettings(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	var req struct {
-		Enabled        bool `json:"enabled"`
-		SegmentMinutes int  `json:"segment_minutes"`
-		RetentionDays  int  `json:"retention_days"`
+		Enabled           bool    `json:"enabled"`
+		SegmentMinutes    int     `json:"segment_minutes"`
+		RetentionDays     int     `json:"retention_days"`
+		MotionEnabled     *bool   `json:"motion_enabled"`
+		MotionSensitivity string  `json:"motion_sensitivity"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -951,6 +992,16 @@ func (s *Server) handleUpdateRecordingSettings(w http.ResponseWriter, r *http.Re
 	s.cfg.Recordings.SegmentMinutes = req.SegmentMinutes
 	s.cfg.Recordings.RetentionDays = req.RetentionDays
 
+	if req.MotionEnabled != nil {
+		s.cfg.Motion.Enabled = *req.MotionEnabled
+	}
+	if req.MotionSensitivity != "" {
+		s.cfg.Motion.Sensitivity = req.MotionSensitivity
+		if s.motionDetector != nil {
+			s.motionDetector.SetSensitivity(req.MotionSensitivity)
+		}
+	}
+
 	if s.cfg.ConfigPath != "" {
 		if err := config.Save(s.cfg.ConfigPath, s.cfg); err != nil {
 			log.Printf("[SETTINGS] Warning: failed to save config: %v", err)
@@ -964,7 +1015,8 @@ func (s *Server) handleUpdateRecordingSettings(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success":   true,
 		"recording": s.cfg.Recordings,
-		"message":   "Pengaturan rekaman berhasil disimpan",
+		"motion":    s.cfg.Motion,
+		"message":   "Pengaturan rekaman & deteksi gerakan berhasil disimpan",
 	})
 }
 

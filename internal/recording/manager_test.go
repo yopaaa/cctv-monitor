@@ -4,8 +4,10 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"cctv-monitor/internal/config"
+	"cctv-monitor/internal/motion"
 )
 
 func TestRecordingManager(t *testing.T) {
@@ -189,5 +191,57 @@ func TestShinobiHierarchicalStructure(t *testing.T) {
 	}
 	if fullPath != filepath.Join(recDir, "2026-10-18T12-50-01.mp4") {
 		t.Errorf("unexpected full path: %s", fullPath)
+	}
+}
+
+func TestRecordingManagerMotionTagging(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "test_rec_motion_*")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	camDir := filepath.Join(tmpDir, "cam1")
+	_ = os.MkdirAll(camDir, 0755)
+
+	// Clip 1: 10:00:00 to 10:05:00
+	// Clip 2: 11:00:00 to 11:05:00
+	_ = os.WriteFile(filepath.Join(camDir, "2026-10-26T10-00-00.mp4"), []byte("mp4"), 0644)
+	_ = os.WriteFile(filepath.Join(camDir, "2026-10-26T11-00-00.mp4"), []byte("mp4"), 0644)
+
+	cfg := &config.Config{
+		Recordings: config.RecordingsConfig{
+			Dir:                 tmpDir,
+			SegmentMinutes:      5,
+			TimezoneOffsetHours: 7,
+		},
+		Cameras: []config.Camera{
+			{ID: "cam1", Name: "Kamera Depan"},
+		},
+	}
+
+	eventMgr := motion.NewEventManager(cfg)
+	// Filename "2026-10-26T10-00-00.mp4" in UTC converts to 17:00:00 WIB.
+	// Record motion at 17:02:15 WIB on 2026-10-26 (falls within Clip 1: 17:00:00 - 17:05:00 WIB)
+	loc := time.FixedZone("WIB", 7*3600)
+	tMotion := time.Date(2026, 10, 26, 17, 2, 15, 0, loc)
+	eventMgr.RecordMotion("cam1", tMotion, 12.5)
+
+	mgr := NewManager(cfg)
+	mgr.SetEventManager(eventMgr)
+
+	clips := mgr.GetClips("cam1", "2026-10-26")
+	if len(clips) != 2 {
+		t.Fatalf("expected 2 clips, got %d", len(clips))
+	}
+
+	// Clip 1 (17:00:00 WIB) should have motion
+	if !clips[0].HasMotion {
+		t.Errorf("expected clip 0 (17:00:00 WIB) to have motion")
+	}
+
+	// Clip 2 (18:00:00 WIB) should NOT have motion
+	if clips[1].HasMotion {
+		t.Errorf("expected clip 1 (18:00:00 WIB) to NOT have motion")
 	}
 }

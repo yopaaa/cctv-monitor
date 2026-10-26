@@ -48,12 +48,18 @@ func (p *cameraProcess) getStatus() (string, string) {
 	return p.status, p.errMsg
 }
 
+// FrameProcessor defines an interface for components analyzing extracted camera frames (e.g. motion detector).
+type FrameProcessor interface {
+	ProcessFrame(camID, imagePath string) (bool, float64)
+}
+
 // Manager manages FFmpeg processes for all configured cameras.
 type Manager struct {
-	cfg       *config.Config
-	processes map[string]*cameraProcess
-	parentCtx context.Context
-	mu        sync.RWMutex
+	cfg            *config.Config
+	processes      map[string]*cameraProcess
+	parentCtx      context.Context
+	frameProcessor FrameProcessor
+	mu             sync.RWMutex
 }
 
 // NewManager creates a new stream manager.
@@ -62,6 +68,13 @@ func NewManager(cfg *config.Config) *Manager {
 		cfg:       cfg,
 		processes: make(map[string]*cameraProcess),
 	}
+}
+
+// SetFrameProcessor sets the processor that receives extracted camera thumbnails (e.g. motion detector).
+func (m *Manager) SetFrameProcessor(fp FrameProcessor) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.frameProcessor = fp
 }
 
 // StartAll launches FFmpeg streaming goroutines for all configured cameras.
@@ -393,7 +406,7 @@ func (m *Manager) thumbnailLoop(ctx context.Context, proc *cameraProcess) {
 	// Initial delay to let FFmpeg produce the first segments
 	sleepOrCancel(ctx, 3*time.Second)
 
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -434,6 +447,13 @@ func (m *Manager) thumbnailLoop(ctx context.Context, proc *cameraProcess) {
 				log.Printf("[%s] Thumbnail extraction failed: %v", camID, err)
 			} else {
 				_ = os.Rename(tempThumbPath, thumbPath)
+
+				m.mu.RLock()
+				fp := m.frameProcessor
+				m.mu.RUnlock()
+				if fp != nil {
+					go fp.ProcessFrame(camID, thumbPath)
+				}
 			}
 		}
 	}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"cctv-monitor/internal/config"
+	"cctv-monitor/internal/motion"
 	"cctv-monitor/internal/recorder"
 	"cctv-monitor/internal/recording"
 	"cctv-monitor/internal/stream"
@@ -61,8 +62,10 @@ func setupTestServer(t *testing.T) (*Server, string, func()) {
 	mgr := stream.NewManager(cfg)
 	recMgr := recording.NewManager(cfg)
 	recEngine := recorder.New(cfg)
+	motionEvents := motion.NewEventManager(cfg)
+	motionDetector := motion.NewDetector(cfg, motionEvents)
 
-	srv := New(cfg, mgr, recMgr, recEngine)
+	srv := New(cfg, mgr, recMgr, recEngine, motionDetector, motionEvents)
 
 	cleanup := func() {
 		os.RemoveAll(tmpDir)

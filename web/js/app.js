@@ -60,6 +60,7 @@
     var recTimeJumpBtn = document.getElementById("rec-time-jump-btn");
     var timelineScrubber = document.getElementById("timeline-scrubber");
     var scrubberSegments = document.getElementById("scrubber-segments");
+    var scrubberMotionSegments = document.getElementById("scrubber-motion-segments");
     var scrubberPlayhead = document.getElementById("scrubber-playhead");
     var scrubberTooltip = document.getElementById("scrubber-tooltip");
     var hourFilterPills = document.getElementById("hour-filter-pills");
@@ -110,6 +111,8 @@
     var nvrEnableCheck = document.getElementById("nvr-enable-check");
     var nvrSegmentSelect = document.getElementById("nvr-segment-select");
     var nvrRetentionSelect = document.getElementById("nvr-retention-select");
+    var nvrMotionCheck = document.getElementById("nvr-motion-check");
+    var nvrMotionSensitivitySelect = document.getElementById("nvr-motion-sensitivity-select");
     var btnSaveNvr = document.getElementById("btn-save-nvr");
     var nvrSaveMsg = document.getElementById("nvr-save-msg");
 
@@ -163,6 +166,7 @@
     var calYear = calCurrentDate.getFullYear();
     var calMonth = calCurrentDate.getMonth();
     var recClips = [];
+    var recMotionEvents = [];
     var recCurrentClipIndex = -1;
     var selectedHourFilter = "all";
 
@@ -1021,8 +1025,17 @@
         var url = "/api/recordings/timeline?camera=" + encodeURIComponent(camID) + "&date=" + encodeURIComponent(dateISO);
         authFetch(url)
             .then(function (resp) { return resp.json(); })
-            .then(function (clips) {
-                recClips = clips || [];
+            .then(function (data) {
+                if (Array.isArray(data)) {
+                    recClips = data;
+                    recMotionEvents = [];
+                } else if (data && typeof data === "object") {
+                    recClips = data.clips || [];
+                    recMotionEvents = data.motion_events || [];
+                } else {
+                    recClips = [];
+                    recMotionEvents = [];
+                }
                 recTotalClipsLabel.textContent = recClips.length + " klip";
                 renderTimelineClips();
             })
@@ -1060,6 +1073,7 @@
         if (recClips.length === 0) {
             recTimelineGrouped.innerHTML = '<div class="timeline-empty">Tidak ada video rekaman pada tanggal ini</div>';
             if (scrubberSegments) scrubberSegments.innerHTML = "";
+            if (scrubberMotionSegments) scrubberMotionSegments.innerHTML = "";
             if (hourFilterPills) hourFilterPills.innerHTML = "";
             if (scrubberPlayhead) scrubberPlayhead.style.display = "none";
             return;
@@ -1093,7 +1107,9 @@
     function render24HScrubber() {
         if (!scrubberSegments) return;
         scrubberSegments.innerHTML = "";
+        if (scrubberMotionSegments) scrubberMotionSegments.innerHTML = "";
 
+        // 1. Base recordings (cyan)
         recClips.forEach(function (clip) {
             var leftPct = (clip.startSec / 86400) * 100;
             var widthPct = Math.max(0.28, (clip.durationSec / 86400) * 100);
@@ -1102,7 +1118,7 @@
             block.className = "scrubber-block";
             block.style.left = leftPct + "%";
             block.style.width = widthPct + "%";
-            block.title = clip.time + " (" + clip.size_formatted + ")";
+            block.title = clip.time + " (" + clip.size_formatted + ")" + (clip.has_motion ? " 🏃 Gerakan" : "");
 
             block.addEventListener("click", function (e) {
                 e.stopPropagation();
@@ -1111,6 +1127,27 @@
 
             scrubberSegments.appendChild(block);
         });
+
+        // 2. Motion detection highlight intervals (amber/orange)
+        if (scrubberMotionSegments && recMotionEvents && recMotionEvents.length > 0) {
+            recMotionEvents.forEach(function (ev) {
+                var startSec = ev.start_sec || 0;
+                var endSec = ev.end_sec || (startSec + 20);
+                if (endSec <= startSec) endSec = startSec + 20;
+
+                var leftPct = (startSec / 86400) * 100;
+                var widthPct = Math.max(0.35, ((endSec - startSec) / 86400) * 100);
+
+                var mBlock = document.createElement("div");
+                mBlock.className = "scrubber-motion-block";
+                mBlock.style.left = leftPct + "%";
+                mBlock.style.width = widthPct + "%";
+                var pctStr = typeof ev.max_change_pct === "number" ? ev.max_change_pct.toFixed(1) + "%" : "";
+                mBlock.title = "🏃 Gerakan: " + ev.start_time + " - " + ev.end_time + (pctStr ? " (" + pctStr + ")" : "");
+
+                scrubberMotionSegments.appendChild(mBlock);
+            });
+        }
     }
 
     function renderHourFilterPills(hourGroups) {
@@ -1128,6 +1165,20 @@
             renderTimelineClips();
         });
         hourFilterPills.appendChild(allPill);
+
+        // Motion filter pill
+        var motionCount = recClips.filter(function (c) { return !!c.has_motion; }).length;
+        if (motionCount > 0) {
+            var motionPill = document.createElement("button");
+            motionPill.className = "hour-pill motion-pill" + (selectedHourFilter === "motion" ? " active" : "");
+            motionPill.innerHTML = "🏃 Gerakan (" + motionCount + ")";
+            motionPill.title = "Hanya tampilkan rekaman yang mendeteksi gerakan";
+            motionPill.addEventListener("click", function () {
+                selectedHourFilter = "motion";
+                renderTimelineClips();
+            });
+            hourFilterPills.appendChild(motionPill);
+        }
 
         // Individual hour pills
         hours.forEach(function (h) {
@@ -1150,11 +1201,15 @@
         var renderedCount = 0;
 
         hours.forEach(function (h) {
-            if (selectedHourFilter !== "all" && selectedHourFilter !== h) {
+            var clipsToRender = hourGroups[h];
+            if (selectedHourFilter === "motion") {
+                clipsToRender = hourGroups[h].filter(function (clip) { return !!clip.has_motion; });
+                if (clipsToRender.length === 0) return;
+            } else if (selectedHourFilter !== "all" && selectedHourFilter !== h) {
                 return;
             }
 
-            renderedCount++;
+            renderedCount += clipsToRender.length;
             var groupDiv = document.createElement("div");
             groupDiv.className = "timeline-hour-group";
             groupDiv.id = "hour-group-" + h;
@@ -1168,7 +1223,7 @@
 
             var meta = document.createElement("div");
             meta.className = "hour-group-meta";
-            meta.textContent = hourGroups[h].length + " rekaman";
+            meta.textContent = clipsToRender.length + " rekaman";
 
             header.appendChild(title);
             header.appendChild(meta);
@@ -1177,14 +1232,25 @@
             var clipsContainer = document.createElement("div");
             clipsContainer.className = "hour-group-clips";
 
-            hourGroups[h].forEach(function (clip) {
+            clipsToRender.forEach(function (clip) {
                 var card = document.createElement("button");
                 card.className = "timeline-clip-card" + (clip.origIdx === recCurrentClipIndex ? " active" : "");
+                if (clip.has_motion) {
+                    card.classList.add("has-motion");
+                }
                 card.id = "rec-clip-" + clip.origIdx;
 
                 var timeRow = document.createElement("div");
                 timeRow.className = "clip-time-row";
                 timeRow.innerHTML = '<span class="clip-play-icon">▶</span> <span>' + clip.time_label + '</span>';
+
+                if (clip.has_motion) {
+                    var badge = document.createElement("span");
+                    badge.className = "clip-motion-badge";
+                    badge.innerHTML = "🏃 Gerakan";
+                    badge.title = "Gerakan terdeteksi dalam rekaman ini";
+                    timeRow.appendChild(badge);
+                }
 
                 var metaRow = document.createElement("div");
                 metaRow.className = "clip-meta-row";
@@ -1205,7 +1271,11 @@
         });
 
         if (renderedCount === 0) {
-            recTimelineGrouped.innerHTML = '<div class="timeline-empty">Tidak ada video pada filter jam ini</div>';
+            if (selectedHourFilter === "motion") {
+                recTimelineGrouped.innerHTML = '<div class="timeline-empty">Tidak ada rekaman dengan gerakan terdeteksi pada tanggal ini</div>';
+            } else {
+                recTimelineGrouped.innerHTML = '<div class="timeline-empty">Tidak ada video pada filter jam ini</div>';
+            }
         }
     }
 
@@ -1510,7 +1580,7 @@
                 currentConfigCameras = data.cameras || [];
                 renderSettingsCameras(currentConfigCameras);
                 if (data.storage) renderStorageInfo(data.storage);
-                if (data.recording) renderRecordingSettings(data.recording);
+                if (data.recording) renderRecordingSettings(data.recording, data.motion);
             })
             .catch(function (err) {
                 if (cameraSettingsList) {
@@ -1628,19 +1698,27 @@
         });
     }
 
-    // Render Recording Settings
-    function renderRecordingSettings(rec) {
-        if (!rec) return;
-        var isEnabled = rec.enabled !== undefined ? !!rec.enabled : (rec.Enabled !== undefined ? !!rec.Enabled : true);
-        var segMin = rec.segment_minutes !== undefined ? rec.segment_minutes : (rec.SegmentMinutes !== undefined ? rec.SegmentMinutes : 5);
-        var retDays = rec.retention_days !== undefined ? rec.retention_days : (rec.RetentionDays !== undefined ? rec.RetentionDays : 7);
+    // Render Recording & Motion Settings
+    function renderRecordingSettings(rec, motion) {
+        if (rec) {
+            var isEnabled = rec.enabled !== undefined ? !!rec.enabled : (rec.Enabled !== undefined ? !!rec.Enabled : true);
+            var segMin = rec.segment_minutes !== undefined ? rec.segment_minutes : (rec.SegmentMinutes !== undefined ? rec.SegmentMinutes : 5);
+            var retDays = rec.retention_days !== undefined ? rec.retention_days : (rec.RetentionDays !== undefined ? rec.RetentionDays : 7);
 
-        if (nvrEnableCheck) nvrEnableCheck.checked = isEnabled;
-        if (nvrSegmentSelect) nvrSegmentSelect.value = String(segMin || 5);
-        if (nvrRetentionSelect) nvrRetentionSelect.value = String(retDays || 7);
+            if (nvrEnableCheck) nvrEnableCheck.checked = isEnabled;
+            if (nvrSegmentSelect) nvrSegmentSelect.value = String(segMin || 5);
+            if (nvrRetentionSelect) nvrRetentionSelect.value = String(retDays || 7);
+        }
+
+        if (motion) {
+            var isMotionEnabled = motion.enabled !== undefined ? !!motion.enabled : true;
+            var sensitivity = motion.sensitivity || "medium";
+            if (nvrMotionCheck) nvrMotionCheck.checked = isMotionEnabled;
+            if (nvrMotionSensitivitySelect) nvrMotionSensitivitySelect.value = sensitivity;
+        }
     }
 
-    // Save NVR Settings
+    // Save NVR & Motion Settings
     if (formNvrSettings) {
         formNvrSettings.addEventListener("submit", function (e) {
             e.preventDefault();
@@ -1654,7 +1732,9 @@
             var payload = {
                 enabled: isEnabled,
                 segment_minutes: parseInt(nvrSegmentSelect.value, 10),
-                retention_days: parseInt(nvrRetentionSelect.value, 10)
+                retention_days: parseInt(nvrRetentionSelect.value, 10),
+                motion_enabled: nvrMotionCheck ? nvrMotionCheck.checked : true,
+                motion_sensitivity: nvrMotionSensitivitySelect ? nvrMotionSensitivitySelect.value : "medium"
             };
 
             authFetch("/api/settings/recording", {
@@ -1667,12 +1747,12 @@
                 if (btnSaveNvr) btnSaveNvr.disabled = false;
                 if (data.success) {
                     if (data.recording) {
-                        renderRecordingSettings(data.recording);
+                        renderRecordingSettings(data.recording, data.motion);
                     } else {
                         nvrEnableCheck.checked = isEnabled;
                     }
                     if (nvrSaveMsg) {
-                        nvrSaveMsg.textContent = "✅ Pengaturan NVR berhasil disimpan!";
+                        nvrSaveMsg.textContent = "✅ Pengaturan NVR & Deteksi Gerakan berhasil disimpan!";
                         nvrSaveMsg.className = "feedback-msg success";
                         setTimeout(function () { nvrSaveMsg.className = "feedback-msg hidden"; }, 4000);
                     }
