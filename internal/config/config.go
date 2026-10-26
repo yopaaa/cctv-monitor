@@ -3,10 +3,14 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
+	"sync"
 
 	"gopkg.in/yaml.v3"
 )
+
+var configSaveMu sync.Mutex
 
 // ServerConfig holds HTTP server settings.
 type ServerConfig struct {
@@ -15,11 +19,6 @@ type ServerConfig struct {
 }
 
 // AlarmConfig holds settings for controlling the camera's alarm/siren.
-// V380 dan kamera China lainnya sering tidak mendukung ONVIF Relay,
-// sehingga kita mendukung beberapa metode:
-//   - "onvif"    : Menggunakan ONVIF SetRelayOutputState (standar, tapi jarang didukung)
-//   - "http_get" : Mengirim HTTP GET ke URL kustom kamera
-//   - "http_post": Mengirim HTTP POST ke URL kustom kamera
 type AlarmConfig struct {
 	Method string `yaml:"method"` // "onvif", "http_get", "http_post" (default: "onvif")
 	OnURL  string `yaml:"on_url"`  // URL untuk nyalakan alarm
@@ -27,18 +26,24 @@ type AlarmConfig struct {
 }
 
 // Camera represents a single CCTV camera configuration.
-// Supports two modes:
-//   - Direct RTSP: set the URL field directly.
-//   - ONVIF Discovery: set OnvifURL, Username, and Password to auto-discover the RTSP URL.
 type Camera struct {
 	ID        string      `yaml:"id"`
 	Name      string      `yaml:"name"`
-	ShinobiID string      `yaml:"shinobi_id"` // Optional: ID monitor di Shinobi (misal: ztIRNMjufs)
-	URL       string      `yaml:"url"`       // Direct RTSP stream URL
-	OnvifURL  string      `yaml:"onvif_url"` // ONVIF device service URL for auto-discovery
-	Username  string      `yaml:"username"`  // Camera credentials (used for ONVIF and/or RTSP)
+	ShinobiID string      `yaml:"shinobi_id"`       // Optional: ID monitor di Shinobi (misal: ztIRNMjufs)
+	URL       string      `yaml:"url"`              // Direct RTSP stream URL
+	OnvifURL  string      `yaml:"onvif_url"`        // ONVIF device service URL for auto-discovery
+	Username  string      `yaml:"username"`         // Camera credentials (used for ONVIF and/or RTSP)
 	Password  string      `yaml:"password"`
-	Alarm     AlarmConfig `yaml:"alarm"`     // Alarm/siren configuration
+	Record    *bool       `yaml:"record,omitempty"` // Whether built-in NVR should record this camera (default true)
+	Alarm     AlarmConfig `yaml:"alarm"`            // Alarm/siren configuration
+}
+
+// IsRecordingEnabled returns true if recording is enabled for this camera (default true).
+func (c *Camera) IsRecordingEnabled() bool {
+	if c.Record == nil {
+		return true
+	}
+	return *c.Record
 }
 
 // AuthConfig holds dashboard authentication settings.
@@ -50,8 +55,11 @@ type AuthConfig struct {
 
 // RecordingsConfig holds settings for CCTV video recordings storage.
 type RecordingsConfig struct {
-	Dir                 string `yaml:"dir"`             // Directory path to recordings (e.g. ./rekaman_cctv or /mnt/nvr_storage)
-	TimezoneOffsetHours int    `yaml:"timezone_offset"` // Timezone offset in hours relative to UTC (default: 7 for UTC+7 / WIB)
+	Enabled             bool   `yaml:"enabled"`               // Aktifkan built-in NVR recorder
+	Dir                 string `yaml:"dir"`                   // Directory path to recordings (e.g. ./rekaman_cctv or /mnt/nvr_storage)
+	SegmentMinutes      int    `yaml:"segment_minutes"`       // Durasi tiap potongan video rekaman (default: 5 menit)
+	RetentionDays       int    `yaml:"retention_days"`        // Berapa hari video disimpan sebelum auto-delete (default: 7 hari)
+	TimezoneOffsetHours int    `yaml:"timezone_offset"`       // Timezone offset in hours relative to UTC (default: 7 for UTC+7 / WIB)
 }
 
 // Config is the top-level application configuration.
@@ -60,6 +68,7 @@ type Config struct {
 	Auth       AuthConfig       `yaml:"auth"`
 	Recordings RecordingsConfig `yaml:"recordings"`
 	Cameras    []Camera         `yaml:"cameras"`
+	ConfigPath string           `yaml:"-"` // Path file config saat ini
 }
 
 // Load reads and validates the configuration from a YAML file.
@@ -70,15 +79,23 @@ func Load(path string) (*Config, error) {
 	}
 
 	cfg := &Config{
+		ConfigPath: path,
 		Server: ServerConfig{
 			Port:       8080,
 			StreamsDir: "./streams",
+		},
+		Recordings: RecordingsConfig{
+			Enabled:        true,
+			SegmentMinutes: 5,
+			RetentionDays:  7,
 		},
 	}
 
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parse config YAML: %w", err)
 	}
+
+	cfg.ConfigPath = path
 
 	// Default auth settings
 	if cfg.Auth.Password != "" {
@@ -94,6 +111,14 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Recordings.Dir == "" {
 		cfg.Recordings.Dir = "./rekaman_cctv"
+	}
+
+	// Recordings defaults
+	if cfg.Recordings.SegmentMinutes <= 0 {
+		cfg.Recordings.SegmentMinutes = 5
+	}
+	if cfg.Recordings.RetentionDays <= 0 {
+		cfg.Recordings.RetentionDays = 7
 	}
 
 	// Environment variable override for recordings timezone offset
@@ -135,4 +160,34 @@ func Load(path string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// Save atomically writes the configuration to a YAML file.
+func Save(path string, cfg *Config) error {
+	configSaveMu.Lock()
+	defer configSaveMu.Unlock()
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshal config to yaml: %w", err)
+	}
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+
+	// Atomic write via temp file
+	tmpFile := filepath.Join(dir, fmt.Sprintf(".%s.tmp", filepath.Base(path)))
+	if err := os.WriteFile(tmpFile, data, 0644); err != nil {
+		return fmt.Errorf("write temp config file: %w", err)
+	}
+
+	if err := os.Rename(tmpFile, path); err != nil {
+		_ = os.Remove(tmpFile)
+		return fmt.Errorf("rename config file: %w", err)
+	}
+
+	cfg.ConfigPath = path
+	return nil
 }

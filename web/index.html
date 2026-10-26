@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CCTV Monitor</title>
-    <link rel="stylesheet" href="css/style.css?v=2.2.5">
+    <link rel="stylesheet" href="css/style.css?v=2.3.0">
     <!-- HLS.js — untuk memutar HLS stream di browser (murni HTTP, tanpa WebSocket) -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
 </head>
@@ -24,6 +24,10 @@
                 <button id="nav-recordings-btn" class="nav-tab-btn" title="Putar Rekaman Video">
                     <span class="nav-icon">📼</span>
                     <span class="nav-text">Rekaman</span>
+                </button>
+                <button id="nav-settings-btn" class="nav-tab-btn" title="Pengaturan Sistem & Kamera">
+                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-text">Pengaturan</span>
                 </button>
             </nav>
         </div>
@@ -184,6 +188,172 @@
         </div>
     </section>
 
+    <!-- SETTINGS VIEW SECTION -->
+    <section id="settings-view" class="view-section hidden">
+        <div class="settings-container">
+            <!-- Settings Subtabs -->
+            <div class="settings-header">
+                <div class="settings-nav-tabs">
+                    <button id="set-tab-cameras-btn" class="set-tab-btn active">
+                        <span>📹</span> Kelola Kamera
+                    </button>
+                    <button id="set-tab-storage-btn" class="set-tab-btn">
+                        <span>💾</span> Penyimpanan & NVR
+                    </button>
+                    <button id="set-tab-security-btn" class="set-tab-btn">
+                        <span>🔒</span> Keamanan & Akun
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tab Content 1: Camera Management -->
+            <div id="set-panel-cameras" class="set-tab-panel active">
+                <div class="panel-top-row">
+                    <div>
+                        <h2>Daftar Kamera</h2>
+                        <p class="panel-desc">Kelola kamera IP, URL RTSP, dan status perekaman bawaan.</p>
+                    </div>
+                    <button id="btn-add-camera" class="btn-primary">
+                        <span>➕</span> Tambah Kamera
+                    </button>
+                </div>
+
+                <div id="camera-settings-list" class="camera-settings-list">
+                    <!-- Populated dynamically by JS -->
+                    <div class="settings-loading">Memuat daftar kamera...</div>
+                </div>
+            </div>
+
+            <!-- Tab Content 2: Storage & NVR -->
+            <div id="set-panel-storage" class="set-tab-panel hidden">
+                <div class="panel-top-row">
+                    <div>
+                        <h2>Penyimpanan & Built-in NVR</h2>
+                        <p class="panel-desc">Konfigurasi perekam otomatis 24/7 dan siklus retensi rekaman.</p>
+                    </div>
+                </div>
+
+                <!-- Storage Capacity Card -->
+                <div class="settings-card storage-card">
+                    <div class="storage-card-header">
+                        <h3>Kapasitas Penyimpanan Disk</h3>
+                        <button id="btn-refresh-storage" class="btn-icon" title="Perbarui info disk">🔄</button>
+                    </div>
+                    <div class="storage-progress-wrapper">
+                        <div class="storage-progress-bar">
+                            <div id="storage-progress-fill" class="storage-progress-fill" style="width: 0%;"></div>
+                        </div>
+                        <div class="storage-labels">
+                            <span id="storage-used-label">0 GB Terpakai</span>
+                            <span id="storage-percent-label">0%</span>
+                            <span id="storage-free-label">0 GB Sisa</span>
+                        </div>
+                    </div>
+                    <div class="storage-details-grid">
+                        <div class="detail-box">
+                            <span class="detail-title">Total Kapasitas</span>
+                            <span id="storage-total-val" class="detail-value">-</span>
+                        </div>
+                        <div class="detail-box">
+                            <span class="detail-title">Ruang Terpakai</span>
+                            <span id="storage-used-val" class="detail-value">-</span>
+                        </div>
+                        <div class="detail-box">
+                            <span class="detail-title">Ruang Tersedia</span>
+                            <span id="storage-free-val" class="detail-value">-</span>
+                        </div>
+                        <div class="detail-box">
+                            <span class="detail-title">Folder Penyimpanan</span>
+                            <span id="storage-path-val" class="detail-value code-path">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- NVR Settings Form -->
+                <div class="settings-card form-card">
+                    <h3>Pengaturan Built-in NVR Recorder</h3>
+                    <form id="form-nvr-settings">
+                        <div class="form-check-group">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="nvr-enable-check" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <div class="toggle-label-text">
+                                <strong>Aktifkan Perekam 24/7 Bawaan</strong>
+                                <p>FFmpeg akan merekam stream kamera secara otomatis tanpa re-encode (CPU ~0%).</p>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="nvr-segment-select">Durasi Tiap Klip Segmen:</label>
+                                <select id="nvr-segment-select" class="form-select">
+                                    <option value="5" selected>5 Menit (Direkomendasikan)</option>
+                                    <option value="10">10 Menit</option>
+                                    <option value="15">15 Menit</option>
+                                    <option value="30">30 Menit</option>
+                                </select>
+                                <span class="form-hint">Setiap potongan video disimpan dalam format MP4 FastStart.</span>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="nvr-retention-select">Masa Simpan (Retensi Otomatis):</label>
+                                <select id="nvr-retention-select" class="form-select">
+                                    <option value="3">3 Hari</option>
+                                    <option value="7" selected>7 Hari (Direkomendasikan)</option>
+                                    <option value="14">14 Hari</option>
+                                    <option value="30">30 Hari</option>
+                                </select>
+                                <span class="form-hint">Rekaman yang lebih tua akan otomatis dihapus untuk menghemat disk.</span>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" id="btn-save-nvr" class="btn-primary">
+                                <span>💾</span> Simpan Pengaturan NVR
+                            </button>
+                            <span id="nvr-save-msg" class="feedback-msg hidden"></span>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Tab Content 3: Security & Account -->
+            <div id="set-panel-security" class="set-tab-panel hidden">
+                <div class="panel-top-row">
+                    <div>
+                        <h2>Keamanan & Kata Sandi</h2>
+                        <p class="panel-desc">Kelola otentikasi login dashboard CCTV.</p>
+                    </div>
+                </div>
+
+                <div class="settings-card form-card max-w-md">
+                    <h3>Ubah Kata Sandi</h3>
+                    <form id="form-security-settings">
+                        <div class="form-group">
+                            <label for="sec-current-pwd">Kata Sandi Saat Ini:</label>
+                            <input type="password" id="sec-current-pwd" class="form-input" placeholder="Masukkan kata sandi lama" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="sec-new-pwd">Kata Sandi Baru:</label>
+                            <input type="password" id="sec-new-pwd" class="form-input" placeholder="Minimal 4 karakter" minlength="4" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="sec-confirm-pwd">Konfirmasi Kata Sandi Baru:</label>
+                            <input type="password" id="sec-confirm-pwd" class="form-input" placeholder="Ketik ulang kata sandi baru" minlength="4" required>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" id="btn-save-security" class="btn-primary">
+                                <span>🔒</span> Perbarui Kata Sandi
+                            </button>
+                            <span id="sec-save-msg" class="feedback-msg hidden"></span>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <!-- Modal Overlay (Live stream & controls) -->
     <div id="modal-overlay" class="modal-overlay hidden">
         <div class="modal-container">
@@ -203,6 +373,96 @@
                 <button id="modal-snapshot" class="modal-btn">📷 Snapshot</button>
                 <button id="modal-fullscreen" class="modal-btn">⛶ Fullscreen</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Camera Add/Edit Modal Overlay -->
+    <div id="camera-modal-overlay" class="modal-overlay hidden">
+        <div class="modal-card-form">
+            <div class="modal-form-header">
+                <h3 id="camera-modal-title">Tambah Kamera Baru</h3>
+                <button id="camera-modal-close" class="modal-btn-close" type="button" title="Tutup">✕</button>
+            </div>
+            <form id="camera-form" class="camera-form">
+                <input type="hidden" id="cam-form-mode" value="add">
+                
+                <div class="form-row">
+                    <div class="form-group flex-1">
+                        <label for="cam-input-name">Nama Kamera: <span class="required-star">*</span></label>
+                        <input type="text" id="cam-input-name" class="form-input" placeholder="Contoh: Kamera Halaman Depan" required>
+                    </div>
+                    <div class="form-group flex-1">
+                        <label for="cam-input-id">ID Kamera (Unik):</label>
+                        <input type="text" id="cam-input-id" class="form-input" placeholder="cam_depan (otomatis jika kosong)">
+                        <span class="form-hint">Hanya huruf kecil, angka, dan garis bawah.</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="cam-input-url">URL Stream RTSP:</label>
+                    <input type="text" id="cam-input-url" class="form-input" placeholder="rtsp://admin:pass@192.168.1.100:554/live/ch0">
+                    <span class="form-hint">Kosongkan jika menggunakan ONVIF auto-discovery di bawah.</span>
+                </div>
+
+                <div class="form-accordion">
+                    <details>
+                        <summary>Pengaturan Tambahan (ONVIF & Alarm Sirene)</summary>
+                        <div class="accordion-content">
+                            <div class="form-group">
+                                <label for="cam-input-onvif">ONVIF Service URL:</label>
+                                <input type="text" id="cam-input-onvif" class="form-input" placeholder="http://192.168.1.100:80/onvif/device_service">
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group flex-1">
+                                    <label for="cam-input-user">Username Kamera:</label>
+                                    <input type="text" id="cam-input-user" class="form-input" placeholder="admin">
+                                </div>
+                                <div class="form-group flex-1">
+                                    <label for="cam-input-pass">Password Kamera:</label>
+                                    <input type="password" id="cam-input-pass" class="form-input" placeholder="password kamera">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="cam-input-alarm-method">Metode Alarm / Sirene:</label>
+                                <select id="cam-input-alarm-method" class="form-select">
+                                    <option value="onvif">ONVIF Relay (Standar)</option>
+                                    <option value="http_get">HTTP GET URL</option>
+                                    <option value="http_post">HTTP POST URL</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="cam-input-alarm-on">URL Nyalakan Alarm (Khusus HTTP):</label>
+                                <input type="text" id="cam-input-alarm-on" class="form-input" placeholder="http://...">
+                            </div>
+                        </div>
+                    </details>
+                </div>
+
+                <div class="form-check-group mt-2">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="cam-input-record" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <div class="toggle-label-text">
+                        <strong>Rekam Kamera Ini (Built-in NVR 24/7)</strong>
+                        <p>Simpan rekaman video kamera ini secara otomatis ke penyimpanan lokal.</p>
+                    </div>
+                </div>
+
+                <div class="test-connection-box">
+                    <button type="button" id="btn-test-rtsp" class="btn-secondary">
+                        <span>🔍</span> Uji Koneksi RTSP
+                    </button>
+                    <span id="test-rtsp-result" class="test-result-badge hidden"></span>
+                </div>
+
+                <div id="cam-form-error" class="form-error-banner hidden"></div>
+
+                <div class="modal-form-actions">
+                    <button type="button" id="btn-cancel-cam" class="btn-secondary">Batal</button>
+                    <button type="submit" id="btn-submit-cam" class="btn-primary">Simpan Kamera</button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -233,6 +493,6 @@
         </div>
     </div>
 
-    <script src="js/app.js?v=2.2.5"></script>
+    <script src="js/app.js?v=2.3.0"></script>
 </body>
 </html>

@@ -27,11 +27,12 @@ type CameraStatus struct {
 
 // cameraProcess tracks an individual camera's FFmpeg process and state.
 type cameraProcess struct {
-	camera config.Camera
-	cancel context.CancelFunc
-	status string
-	errMsg string
-	mu     sync.RWMutex
+	camera     config.Camera
+	loopCancel context.CancelFunc
+	ffCancel   context.CancelFunc
+	status     string
+	errMsg     string
+	mu         sync.RWMutex
 }
 
 func (p *cameraProcess) setStatus(status, errMsg string) {
@@ -51,6 +52,7 @@ func (p *cameraProcess) getStatus() (string, string) {
 type Manager struct {
 	cfg       *config.Config
 	processes map[string]*cameraProcess
+	parentCtx context.Context
 	mu        sync.RWMutex
 }
 
@@ -64,32 +66,137 @@ func NewManager(cfg *config.Config) *Manager {
 
 // StartAll launches FFmpeg streaming goroutines for all configured cameras.
 func (m *Manager) StartAll(ctx context.Context) error {
+	m.mu.Lock()
+	m.parentCtx = ctx
+	m.mu.Unlock()
+
 	// Create base streams directory
 	if err := os.MkdirAll(m.cfg.Server.StreamsDir, 0755); err != nil {
 		return fmt.Errorf("create streams dir: %w", err)
 	}
 
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	for _, cam := range m.cfg.Cameras {
-		// Create per-camera directory for HLS segments
 		camDir := filepath.Join(m.cfg.Server.StreamsDir, cam.ID)
 		if err := os.MkdirAll(camDir, 0755); err != nil {
 			return fmt.Errorf("create dir for camera %q: %w", cam.ID, err)
 		}
-
-		proc := &cameraProcess{
-			camera: cam,
-			status: "connecting",
-		}
-
-		m.mu.Lock()
-		m.processes[cam.ID] = proc
-		m.mu.Unlock()
-
-		go m.runCameraLoop(ctx, proc)
-		go m.thumbnailLoop(ctx, proc)
+		m.startCameraLocked(ctx, cam)
 	}
 
 	return nil
+}
+
+// AddCamera registers a new camera, persists stream dir, and launches streaming goroutines.
+func (m *Manager) AddCamera(ctx context.Context, cam config.Camera) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, c := range m.cfg.Cameras {
+		if c.ID == cam.ID {
+			return fmt.Errorf("kamera dengan ID %q sudah ada", cam.ID)
+		}
+	}
+
+	camDir := filepath.Join(m.cfg.Server.StreamsDir, cam.ID)
+	if err := os.MkdirAll(camDir, 0755); err != nil {
+		return fmt.Errorf("create dir for camera %q: %w", cam.ID, err)
+	}
+
+	m.cfg.Cameras = append(m.cfg.Cameras, cam)
+	m.startCameraLocked(ctx, cam)
+	return nil
+}
+
+// UpdateCamera updates a camera configuration and restarts its stream process.
+func (m *Manager) UpdateCamera(ctx context.Context, cam config.Camera) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	found := false
+	for i, c := range m.cfg.Cameras {
+		if c.ID == cam.ID {
+			m.cfg.Cameras[i] = cam
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("kamera %q tidak ditemukan", cam.ID)
+	}
+
+	camDir := filepath.Join(m.cfg.Server.StreamsDir, cam.ID)
+	_ = os.MkdirAll(camDir, 0755)
+
+	m.stopCameraLocked(cam.ID)
+	m.startCameraLocked(ctx, cam)
+	return nil
+}
+
+// RemoveCamera stops and removes a camera from the manager.
+func (m *Manager) RemoveCamera(camID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	found := false
+	newCams := make([]config.Camera, 0, len(m.cfg.Cameras))
+	for _, c := range m.cfg.Cameras {
+		if c.ID == camID {
+			found = true
+			continue
+		}
+		newCams = append(newCams, c)
+	}
+	if !found {
+		return fmt.Errorf("kamera %q tidak ditemukan", camID)
+	}
+	m.cfg.Cameras = newCams
+
+	m.stopCameraLocked(camID)
+
+	// Clean up stream directory
+	camDir := filepath.Join(m.cfg.Server.StreamsDir, camID)
+	_ = os.RemoveAll(camDir)
+
+	return nil
+}
+
+func (m *Manager) startCameraLocked(ctx context.Context, cam config.Camera) {
+	if ctx == nil {
+		ctx = m.parentCtx
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	camCtx, loopCancel := context.WithCancel(ctx)
+	proc := &cameraProcess{
+		camera:     cam,
+		loopCancel: loopCancel,
+		status:     "connecting",
+	}
+	m.processes[cam.ID] = proc
+
+	go m.runCameraLoop(camCtx, proc)
+	go m.thumbnailLoop(camCtx, proc)
+}
+
+func (m *Manager) stopCameraLocked(camID string) {
+	if proc, ok := m.processes[camID]; ok {
+		proc.mu.Lock()
+		if proc.ffCancel != nil {
+			proc.ffCancel()
+		}
+		if proc.loopCancel != nil {
+			proc.loopCancel()
+		}
+		proc.status = "offline"
+		proc.mu.Unlock()
+		delete(m.processes, camID)
+		log.Printf("[%s] Stream stopped and removed", camID)
+	}
 }
 
 // runCameraLoop is the main loop for a single camera.
@@ -135,7 +242,7 @@ func (m *Manager) runCameraLoop(ctx context.Context, proc *cameraProcess) {
 
 		ffCtx, ffCancel := context.WithCancel(ctx)
 		proc.mu.Lock()
-		proc.cancel = ffCancel
+		proc.ffCancel = ffCancel
 		proc.mu.Unlock()
 
 		err := m.runFFmpeg(ffCtx, camID, rtspURL, outPath, proc)
@@ -215,18 +322,22 @@ func (m *Manager) runFFmpeg(ctx context.Context, camID, rtspURL, outPath string,
 
 // StopAll terminates all running FFmpeg processes.
 func (m *Manager) StopAll() {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	for id, proc := range m.processes {
 		proc.mu.Lock()
-		if proc.cancel != nil {
-			proc.cancel()
+		if proc.ffCancel != nil {
+			proc.ffCancel()
+		}
+		if proc.loopCancel != nil {
+			proc.loopCancel()
 		}
 		proc.status = "offline"
 		proc.mu.Unlock()
 		log.Printf("[%s] Stream stopped", id)
 	}
+	m.processes = make(map[string]*cameraProcess)
 }
 
 // GetCameras returns the current status of all cameras, maintaining config order.

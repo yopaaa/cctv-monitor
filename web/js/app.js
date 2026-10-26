@@ -24,8 +24,10 @@
     // DOM Elements — Dashboard & Navigation
     var navLiveBtn = document.getElementById("nav-live-btn");
     var navRecordingsBtn = document.getElementById("nav-recordings-btn");
+    var navSettingsBtn = document.getElementById("nav-settings-btn");
     var liveView = document.getElementById("live-view");
     var recordingsView = document.getElementById("recordings-view");
+    var settingsView = document.getElementById("settings-view");
     var gridSelectorGroup = document.getElementById("grid-selector-group");
 
     var grid = document.getElementById("camera-grid");
@@ -80,6 +82,65 @@
     var loginEmailDisplay = document.getElementById("login-email-display");
     var loginError = document.getElementById("login-error");
     var loginSubmitBtn = document.getElementById("login-submit-btn");
+
+    // DOM Elements — Settings Subtabs
+    var setTabCamerasBtn = document.getElementById("set-tab-cameras-btn");
+    var setTabStorageBtn = document.getElementById("set-tab-storage-btn");
+    var setTabSecurityBtn = document.getElementById("set-tab-security-btn");
+    var setPanelCameras = document.getElementById("set-panel-cameras");
+    var setPanelStorage = document.getElementById("set-panel-storage");
+    var setPanelSecurity = document.getElementById("set-panel-security");
+
+    // DOM Elements — Settings Camera Panel
+    var btnAddCamera = document.getElementById("btn-add-camera");
+    var cameraSettingsList = document.getElementById("camera-settings-list");
+
+    // DOM Elements — Settings Storage & NVR Panel
+    var btnRefreshStorage = document.getElementById("btn-refresh-storage");
+    var storageProgressFill = document.getElementById("storage-progress-fill");
+    var storageUsedLabel = document.getElementById("storage-used-label");
+    var storagePercentLabel = document.getElementById("storage-percent-label");
+    var storageFreeLabel = document.getElementById("storage-free-label");
+    var storageTotalVal = document.getElementById("storage-total-val");
+    var storageUsedVal = document.getElementById("storage-used-val");
+    var storageFreeVal = document.getElementById("storage-free-val");
+    var storagePathVal = document.getElementById("storage-path-val");
+
+    var formNvrSettings = document.getElementById("form-nvr-settings");
+    var nvrEnableCheck = document.getElementById("nvr-enable-check");
+    var nvrSegmentSelect = document.getElementById("nvr-segment-select");
+    var nvrRetentionSelect = document.getElementById("nvr-retention-select");
+    var btnSaveNvr = document.getElementById("btn-save-nvr");
+    var nvrSaveMsg = document.getElementById("nvr-save-msg");
+
+    // DOM Elements — Settings Security Panel
+    var formSecuritySettings = document.getElementById("form-security-settings");
+    var secCurrentPwd = document.getElementById("sec-current-pwd");
+    var secNewPwd = document.getElementById("sec-new-pwd");
+    var secConfirmPwd = document.getElementById("sec-confirm-pwd");
+    var btnSaveSecurity = document.getElementById("btn-save-security");
+    var secSaveMsg = document.getElementById("sec-save-msg");
+
+    // DOM Elements — Camera Modal Form
+    var cameraModalOverlay = document.getElementById("camera-modal-overlay");
+    var cameraModalTitle = document.getElementById("camera-modal-title");
+    var cameraModalClose = document.getElementById("camera-modal-close");
+    var cameraForm = document.getElementById("camera-form");
+    var camFormMode = document.getElementById("cam-form-mode");
+    var camInputName = document.getElementById("cam-input-name");
+    var camInputId = document.getElementById("cam-input-id");
+    var camInputUrl = document.getElementById("cam-input-url");
+    var camInputOnvif = document.getElementById("cam-input-onvif");
+    var camInputUser = document.getElementById("cam-input-user");
+    var camInputPass = document.getElementById("cam-input-pass");
+    var camInputAlarmMethod = document.getElementById("cam-input-alarm-method");
+    var camInputAlarmOn = document.getElementById("cam-input-alarm-on");
+    var camInputRecord = document.getElementById("cam-input-record");
+    var btnTestRtsp = document.getElementById("btn-test-rtsp");
+    var testRtspResult = document.getElementById("test-rtsp-result");
+    var camFormError = document.getElementById("cam-form-error");
+    var btnCancelCam = document.getElementById("btn-cancel-cam");
+    var btnSubmitCam = document.getElementById("btn-submit-cam");
 
     // State — Live
     var currentCameras = [];
@@ -761,26 +822,41 @@
     });
 
     // ===================================
-    // View Switcher (Live vs Rekaman)
+    // View Switcher (Live vs Rekaman vs Pengaturan)
     // ===================================
 
     function switchView(view) {
         currentView = view;
         if (view === "live") {
             navLiveBtn.classList.add("active");
-            navRecordingsBtn.classList.remove("active");
+            if (navRecordingsBtn) navRecordingsBtn.classList.remove("active");
+            if (navSettingsBtn) navSettingsBtn.classList.remove("active");
             liveView.classList.remove("hidden");
-            recordingsView.classList.add("hidden");
+            if (recordingsView) recordingsView.classList.add("hidden");
+            if (settingsView) settingsView.classList.add("hidden");
             if (gridSelectorGroup) gridSelectorGroup.style.display = "";
             if (recVideoPlayer) recVideoPlayer.pause();
-        } else {
+        } else if (view === "recordings") {
             navLiveBtn.classList.remove("active");
-            navRecordingsBtn.classList.add("active");
+            if (navRecordingsBtn) navRecordingsBtn.classList.add("active");
+            if (navSettingsBtn) navSettingsBtn.classList.remove("active");
             liveView.classList.add("hidden");
-            recordingsView.classList.remove("hidden");
+            if (recordingsView) recordingsView.classList.remove("hidden");
+            if (settingsView) settingsView.classList.add("hidden");
             if (gridSelectorGroup) gridSelectorGroup.style.display = "none";
             if (activeModalCam) closeModal();
             initRecordingsView();
+        } else if (view === "settings") {
+            navLiveBtn.classList.remove("active");
+            if (navRecordingsBtn) navRecordingsBtn.classList.remove("active");
+            if (navSettingsBtn) navSettingsBtn.classList.add("active");
+            liveView.classList.add("hidden");
+            if (recordingsView) recordingsView.classList.add("hidden");
+            if (settingsView) settingsView.classList.remove("hidden");
+            if (gridSelectorGroup) gridSelectorGroup.style.display = "none";
+            if (activeModalCam) closeModal();
+            if (recVideoPlayer) recVideoPlayer.pause();
+            loadSettingsData();
         }
     }
 
@@ -793,6 +869,12 @@
     if (navRecordingsBtn) {
         navRecordingsBtn.addEventListener("click", function () {
             switchView("recordings");
+        });
+    }
+
+    if (navSettingsBtn) {
+        navSettingsBtn.addEventListener("click", function () {
+            switchView("settings");
         });
     }
 
@@ -1390,6 +1472,476 @@
     }
 
     // ===================================
+    // Settings Module (Cameras, Storage, Security)
+    // ===================================
+
+    var currentConfigCameras = [];
+
+    // Subtab switching
+    function switchSettingsTab(tabName) {
+        if (setTabCamerasBtn) setTabCamerasBtn.classList.toggle("active", tabName === "cameras");
+        if (setTabStorageBtn) setTabStorageBtn.classList.toggle("active", tabName === "storage");
+        if (setTabSecurityBtn) setTabSecurityBtn.classList.toggle("active", tabName === "security");
+
+        if (setPanelCameras) setPanelCameras.classList.toggle("hidden", tabName !== "cameras");
+        if (setPanelStorage) setPanelStorage.classList.toggle("hidden", tabName !== "storage");
+        if (setPanelSecurity) setPanelSecurity.classList.toggle("hidden", tabName !== "security");
+    }
+
+    if (setTabCamerasBtn) {
+        setTabCamerasBtn.addEventListener("click", function () { switchSettingsTab("cameras"); });
+    }
+    if (setTabStorageBtn) {
+        setTabStorageBtn.addEventListener("click", function () { switchSettingsTab("storage"); });
+    }
+    if (setTabSecurityBtn) {
+        setTabSecurityBtn.addEventListener("click", function () { switchSettingsTab("security"); });
+    }
+
+    // Load Settings
+    function loadSettingsData() {
+        if (cameraSettingsList) {
+            cameraSettingsList.innerHTML = '<div class="settings-loading">Memuat daftar kamera...</div>';
+        }
+        return authFetch("/api/settings")
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (!data) return;
+                currentConfigCameras = data.cameras || [];
+                renderSettingsCameras(currentConfigCameras);
+                if (data.storage) renderStorageInfo(data.storage);
+                if (data.recording) renderRecordingSettings(data.recording);
+            })
+            .catch(function (err) {
+                if (cameraSettingsList) {
+                    cameraSettingsList.innerHTML = '<div class="form-error-banner">Gagal memuat pengaturan: ' + (err.message || err) + '</div>';
+                }
+            });
+    }
+
+    // Render Camera List
+    function renderSettingsCameras(cameras) {
+        if (!cameraSettingsList) return;
+        cameraSettingsList.innerHTML = "";
+
+        if (!cameras || cameras.length === 0) {
+            cameraSettingsList.innerHTML =
+                '<div class="settings-empty">Belum ada kamera yang ditambahkan. Klik tombol <strong>+ Tambah Kamera</strong> di atas untuk menambahkan.</div>';
+            return;
+        }
+
+        cameras.forEach(function (cam) {
+            var item = document.createElement("div");
+            item.className = "settings-camera-card";
+
+            var isRecording = cam.record !== false;
+            var modeLabel = cam.url ? "Direct RTSP" : (cam.onvif_url ? "ONVIF" : "Manual");
+            var urlDisplay = cam.url || cam.onvif_url || "-";
+
+            item.innerHTML =
+                '<div class="cam-info-col">' +
+                    '<div class="cam-name-row">' +
+                        '<span class="cam-title-text">' + escapeHtml(cam.name) + '</span>' +
+                        '<span class="cam-id-pill">' + escapeHtml(cam.id) + '</span>' +
+                    '</div>' +
+                    '<div class="cam-badges-row">' +
+                        '<span class="badge-tag badge-mode">📡 ' + modeLabel + '</span>' +
+                        (isRecording
+                            ? '<span class="badge-tag badge-rec-on">🔴 NVR Merekam</span>'
+                            : '<span class="badge-tag badge-rec-off">⚪ NVR Nonaktif</span>') +
+                    '</div>' +
+                    '<span class="cam-url-preview" title="' + escapeHtml(urlDisplay) + '">' + escapeHtml(urlDisplay) + '</span>' +
+                '</div>' +
+                '<div class="cam-actions-col">' +
+                    '<button class="btn-secondary btn-edit-cam" data-id="' + escapeHtml(cam.id) + '">✏️ Edit</button>' +
+                    '<button class="btn-danger btn-del-cam" data-id="' + escapeHtml(cam.id) + '">🗑️ Hapus</button>' +
+                '</div>';
+
+            cameraSettingsList.appendChild(item);
+        });
+
+        // Attach action handlers
+        var editBtns = cameraSettingsList.querySelectorAll(".btn-edit-cam");
+        editBtns.forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var camId = this.getAttribute("data-id");
+                var cam = currentConfigCameras.find(function (c) { return c.id === camId; });
+                if (cam) openCameraModal("edit", cam);
+            });
+        });
+
+        var delBtns = cameraSettingsList.querySelectorAll(".btn-del-cam");
+        delBtns.forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var camId = this.getAttribute("data-id");
+                deleteCamera(camId);
+            });
+        });
+    }
+
+    // Render Storage Info
+    function renderStorageInfo(storage) {
+        if (!storage) return;
+
+        var pct = Math.round(storage.used_percent || 0);
+        if (storageProgressFill) {
+            storageProgressFill.style.width = pct + "%";
+            storageProgressFill.classList.remove("warning", "danger");
+            if (pct >= 90) {
+                storageProgressFill.classList.add("danger");
+            } else if (pct >= 75) {
+                storageProgressFill.classList.add("warning");
+            }
+        }
+
+        if (storageUsedLabel) storageUsedLabel.textContent = storage.used_formatted + " Terpakai";
+        if (storagePercentLabel) storagePercentLabel.textContent = pct + "%";
+        if (storageFreeLabel) storageFreeLabel.textContent = storage.free_formatted + " Sisa";
+
+        if (storageTotalVal) storageTotalVal.textContent = storage.total_formatted;
+        if (storageUsedVal) storageUsedVal.textContent = storage.used_formatted;
+        if (storageFreeVal) storageFreeVal.textContent = storage.free_formatted;
+        if (storagePathVal) storagePathVal.textContent = storage.path;
+    }
+
+    if (btnRefreshStorage) {
+        btnRefreshStorage.addEventListener("click", function () {
+            btnRefreshStorage.textContent = "⏳";
+            authFetch("/api/settings/storage")
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    renderStorageInfo(data);
+                    btnRefreshStorage.textContent = "🔄";
+                })
+                .catch(function () {
+                    btnRefreshStorage.textContent = "🔄";
+                });
+        });
+    }
+
+    // Render Recording Settings
+    function renderRecordingSettings(rec) {
+        if (!rec) return;
+        if (nvrEnableCheck) nvrEnableCheck.checked = !!rec.enabled;
+        if (nvrSegmentSelect) nvrSegmentSelect.value = String(rec.segment_minutes || 5);
+        if (nvrRetentionSelect) nvrRetentionSelect.value = String(rec.retention_days || 7);
+    }
+
+    // Save NVR Settings
+    if (formNvrSettings) {
+        formNvrSettings.addEventListener("submit", function (e) {
+            e.preventDefault();
+            if (nvrSaveMsg) {
+                nvrSaveMsg.textContent = "Menyimpan...";
+                nvrSaveMsg.className = "feedback-msg";
+            }
+            if (btnSaveNvr) btnSaveNvr.disabled = true;
+
+            var payload = {
+                enabled: nvrEnableCheck.checked,
+                segment_minutes: parseInt(nvrSegmentSelect.value, 10),
+                retention_days: parseInt(nvrRetentionSelect.value, 10)
+            };
+
+            authFetch("/api/settings/recording", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (btnSaveNvr) btnSaveNvr.disabled = false;
+                if (data.success) {
+                    if (nvrSaveMsg) {
+                        nvrSaveMsg.textContent = "✅ Pengaturan NVR berhasil disimpan!";
+                        nvrSaveMsg.className = "feedback-msg success";
+                        setTimeout(function () { nvrSaveMsg.className = "feedback-msg hidden"; }, 4000);
+                    }
+                } else {
+                    if (nvrSaveMsg) {
+                        nvrSaveMsg.textContent = "❌ " + (data.error || "Gagal menyimpan");
+                        nvrSaveMsg.className = "feedback-msg error";
+                    }
+                }
+            })
+            .catch(function (err) {
+                if (btnSaveNvr) btnSaveNvr.disabled = false;
+                if (nvrSaveMsg) {
+                    nvrSaveMsg.textContent = "❌ " + (err.message || err);
+                    nvrSaveMsg.className = "feedback-msg error";
+                }
+            });
+        });
+    }
+
+    // Save Security / Password Settings
+    if (formSecuritySettings) {
+        formSecuritySettings.addEventListener("submit", function (e) {
+            e.preventDefault();
+            if (secSaveMsg) {
+                secSaveMsg.className = "feedback-msg hidden";
+            }
+
+            if (secNewPwd.value !== secConfirmPwd.value) {
+                if (secSaveMsg) {
+                    secSaveMsg.textContent = "❌ Konfirmasi kata sandi baru tidak cocok!";
+                    secSaveMsg.className = "feedback-msg error";
+                }
+                return;
+            }
+
+            if (btnSaveSecurity) btnSaveSecurity.disabled = true;
+
+            var payload = {
+                current_password: secCurrentPwd.value,
+                new_password: secNewPwd.value
+            };
+
+            authFetch("/api/settings/security", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (btnSaveSecurity) btnSaveSecurity.disabled = false;
+                if (data.success) {
+                    secCurrentPwd.value = "";
+                    secNewPwd.value = "";
+                    secConfirmPwd.value = "";
+                    if (secSaveMsg) {
+                        secSaveMsg.textContent = "✅ Kata sandi berhasil diperbarui!";
+                        secSaveMsg.className = "feedback-msg success";
+                        setTimeout(function () { secSaveMsg.className = "feedback-msg hidden"; }, 4000);
+                    }
+                } else {
+                    if (secSaveMsg) {
+                        secSaveMsg.textContent = "❌ " + (data.error || "Gagal mengubah kata sandi");
+                        secSaveMsg.className = "feedback-msg error";
+                    }
+                }
+            })
+            .catch(function (err) {
+                if (btnSaveSecurity) btnSaveSecurity.disabled = false;
+                if (secSaveMsg) {
+                    secSaveMsg.textContent = "❌ " + (err.message || err);
+                    secSaveMsg.className = "feedback-msg error";
+                }
+            });
+        });
+    }
+
+    // Camera Modal & Actions
+    function openCameraModal(mode, cam) {
+        camFormMode.value = mode;
+        if (camFormError) camFormError.className = "form-error-banner hidden";
+        if (testRtspResult) testRtspResult.className = "test-result-badge hidden";
+
+        if (mode === "add") {
+            cameraModalTitle.textContent = "Tambah Kamera Baru";
+            camInputName.value = "";
+            camInputId.value = "";
+            camInputId.readOnly = false;
+            camInputUrl.value = "";
+            camInputOnvif.value = "";
+            camInputUser.value = "";
+            camInputPass.value = "";
+            camInputAlarmMethod.value = "onvif";
+            camInputAlarmOn.value = "";
+            camInputRecord.checked = true;
+        } else {
+            cameraModalTitle.textContent = "Edit Kamera: " + (cam.name || cam.id);
+            camInputName.value = cam.name || "";
+            camInputId.value = cam.id || "";
+            camInputId.readOnly = true;
+            camInputUrl.value = cam.url || "";
+            camInputOnvif.value = cam.onvif_url || "";
+            camInputUser.value = cam.username || "";
+            camInputPass.value = cam.password || "";
+            camInputAlarmMethod.value = (cam.alarm && cam.alarm.method) || "onvif";
+            camInputAlarmOn.value = (cam.alarm && cam.alarm.on_url) || "";
+            camInputRecord.checked = cam.record !== false;
+        }
+
+        cameraModalOverlay.classList.remove("hidden");
+    }
+
+    function closeCameraModal() {
+        if (cameraModalOverlay) cameraModalOverlay.classList.add("hidden");
+    }
+
+    if (btnAddCamera) {
+        btnAddCamera.addEventListener("click", function () {
+            openCameraModal("add");
+        });
+    }
+
+    if (cameraModalClose) {
+        cameraModalClose.addEventListener("click", closeCameraModal);
+    }
+    if (btnCancelCam) {
+        btnCancelCam.addEventListener("click", closeCameraModal);
+    }
+
+    // Test RTSP
+    if (btnTestRtsp) {
+        btnTestRtsp.addEventListener("click", function () {
+            var url = camInputUrl.value.trim();
+            var onvifUrl = camInputOnvif.value.trim();
+
+            if (!url && !onvifUrl) {
+                testRtspResult.textContent = "❌ Masukkan URL RTSP atau ONVIF terlebih dahulu";
+                testRtspResult.className = "test-result-badge error";
+                return;
+            }
+
+            btnTestRtsp.disabled = true;
+            btnTestRtsp.innerHTML = "<span>⏳</span> Menguji koneksi...";
+            testRtspResult.className = "test-result-badge hidden";
+
+            var payload = {
+                url: url,
+                onvif_url: onvifUrl,
+                username: camInputUser.value.trim(),
+                password: camInputPass.value.trim()
+            };
+
+            authFetch("/api/settings/cameras/test", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                btnTestRtsp.disabled = false;
+                btnTestRtsp.innerHTML = "<span>🔍</span> Uji Koneksi RTSP";
+
+                if (data.success) {
+                    testRtspResult.textContent = "✅ " + data.message;
+                    testRtspResult.className = "test-result-badge success";
+                } else {
+                    testRtspResult.textContent = "❌ " + (data.error || "Gagal terhubung");
+                    testRtspResult.className = "test-result-badge error";
+                }
+            })
+            .catch(function (err) {
+                btnTestRtsp.disabled = false;
+                btnTestRtsp.innerHTML = "<span>🔍</span> Uji Koneksi RTSP";
+                testRtspResult.textContent = "❌ " + (err.message || err);
+                testRtspResult.className = "test-result-badge error";
+            });
+        });
+    }
+
+    // Submit Camera Form
+    if (cameraForm) {
+        cameraForm.addEventListener("submit", function (e) {
+            e.preventDefault();
+            if (camFormError) camFormError.className = "form-error-banner hidden";
+
+            var mode = camFormMode.value;
+            var name = camInputName.value.trim();
+            var id = camInputId.value.trim();
+            var url = camInputUrl.value.trim();
+            var onvifUrl = camInputOnvif.value.trim();
+
+            if (!name) {
+                showCamError("Nama kamera wajib diisi");
+                return;
+            }
+            if (!url && !onvifUrl) {
+                showCamError("URL RTSP atau ONVIF wajib diisi");
+                return;
+            }
+
+            var recVal = camInputRecord.checked;
+            var camData = {
+                name: name,
+                id: id,
+                url: url,
+                onvif_url: onvifUrl,
+                username: camInputUser.value.trim(),
+                password: camInputPass.value.trim(),
+                record: recVal,
+                alarm: {
+                    method: camInputAlarmMethod.value,
+                    on_url: camInputAlarmOn.value.trim()
+                }
+            };
+
+            var endpoint = "/api/settings/cameras";
+            var httpMethod = "POST";
+            if (mode === "edit") {
+                endpoint = "/api/settings/cameras/" + encodeURIComponent(id);
+                httpMethod = "PUT";
+            }
+
+            if (btnSubmitCam) btnSubmitCam.disabled = true;
+
+            authFetch(endpoint, {
+                method: httpMethod,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(camData)
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (btnSubmitCam) btnSubmitCam.disabled = false;
+                if (data.success) {
+                    closeCameraModal();
+                    loadSettingsData();
+                    pollStatus();
+                } else {
+                    showCamError(data.error || "Gagal menyimpan kamera");
+                }
+            })
+            .catch(function (err) {
+                if (btnSubmitCam) btnSubmitCam.disabled = false;
+                showCamError(err.message || err);
+            });
+        });
+    }
+
+    function showCamError(msg) {
+        if (camFormError) {
+            camFormError.textContent = msg;
+            camFormError.className = "form-error-banner";
+        }
+    }
+
+    // Delete Camera
+    function deleteCamera(camId) {
+        if (!confirm("Apakah Anda yakin ingin menghapus kamera " + camId + "? Perekaman dan live stream untuk kamera ini akan dihentikan.")) {
+            return;
+        }
+
+        authFetch("/api/settings/cameras/" + encodeURIComponent(camId), {
+            method: "DELETE"
+        })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            if (data.success) {
+                loadSettingsData();
+                pollStatus();
+            } else {
+                alert("Gagal menghapus kamera: " + (data.error || "Unknown error"));
+            }
+        })
+        .catch(function (err) {
+            alert("Gagal menghapus kamera: " + (err.message || err));
+        });
+    }
+
+    function escapeHtml(str) {
+        if (!str) return "";
+        return String(str)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+
+    // ===================================
     // Dashboard Loop & Lifecycle
     // ===================================
 
@@ -1434,6 +1986,8 @@
 
         if (window.location.hash === "#rekaman" || window.location.search.indexOf("tab=rekaman") !== -1) {
             switchView("recordings");
+        } else if (window.location.hash === "#pengaturan" || window.location.search.indexOf("tab=pengaturan") !== -1) {
+            switchView("settings");
         } else {
             setTimeout(initRecordingsView, 500);
         }
@@ -1463,10 +2017,12 @@
         });
     }
 
-    // Auto-switch to recordings if requested in URL hash or query param
+    // Auto-switch to recordings or settings if requested in URL hash or query param
     window.addEventListener("hashchange", function () {
         if (window.location.hash === "#rekaman") {
             switchView("recordings");
+        } else if (window.location.hash === "#pengaturan") {
+            switchView("settings");
         } else if (window.location.hash === "#live" || !window.location.hash) {
             switchView("live");
         }

@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"cctv-monitor/internal/config"
+	"cctv-monitor/internal/recorder"
 	"cctv-monitor/internal/recording"
 	"cctv-monitor/internal/server"
 	"cctv-monitor/internal/stream"
@@ -30,11 +31,14 @@ func main() {
 	// Initialize stream manager
 	mgr := stream.NewManager(cfg)
 
-	// Initialize recordings manager
+	// Initialize recordings playback manager
 	recMgr := recording.NewManager(cfg)
 	log.Printf("[INFO] Recordings storage path: %s", recMgr.BaseDir())
 
-	// Start all camera streams
+	// Initialize built-in NVR recorder engine
+	recEngine := recorder.New(cfg)
+
+	// Start all camera streams and recorder
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -42,8 +46,12 @@ func main() {
 		log.Fatalf("[FATAL] Gagal start streams: %v", err)
 	}
 
+	if err := recEngine.StartAll(ctx); err != nil {
+		log.Printf("[WARN] Gagal start recorder: %v", err)
+	}
+
 	// Initialize HTTP server
-	srv := server.New(cfg, mgr, recMgr)
+	srv := server.New(cfg, mgr, recMgr, recEngine)
 
 	// Graceful shutdown on SIGINT/SIGTERM
 	sigCh := make(chan os.Signal, 1)
@@ -53,6 +61,7 @@ func main() {
 		sig := <-sigCh
 		fmt.Printf("\n[INFO] Received signal %v, shutting down...\n", sig)
 		cancel()
+		recEngine.StopAll()
 		mgr.StopAll()
 		os.Exit(0)
 	}()

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,6 +19,7 @@ import (
 
 	"cctv-monitor/internal/config"
 	"cctv-monitor/internal/onvif"
+	"cctv-monitor/internal/recorder"
 	"cctv-monitor/internal/recording"
 	"cctv-monitor/internal/stream"
 	"cctv-monitor/web"
@@ -27,22 +30,24 @@ const sessionDuration = 30 * 24 * time.Hour // 30 hari
 
 // Server is the HTTP server that serves the web dashboard and HLS streams.
 type Server struct {
-	cfg      *config.Config
-	mgr      *stream.Manager
-	recMgr   *recording.Manager
-	mux      *http.ServeMux
-	sessions map[string]time.Time
-	sessMu   sync.RWMutex
+	cfg       *config.Config
+	mgr       *stream.Manager
+	recMgr    *recording.Manager
+	recEngine *recorder.Engine
+	mux       *http.ServeMux
+	sessions  map[string]time.Time
+	sessMu    sync.RWMutex
 }
 
 // New creates a new HTTP server with all routes configured.
-func New(cfg *config.Config, mgr *stream.Manager, recMgr *recording.Manager) *Server {
+func New(cfg *config.Config, mgr *stream.Manager, recMgr *recording.Manager, recEngine *recorder.Engine) *Server {
 	s := &Server{
-		cfg:      cfg,
-		mgr:      mgr,
-		recMgr:   recMgr,
-		mux:      http.NewServeMux(),
-		sessions: make(map[string]time.Time),
+		cfg:       cfg,
+		mgr:       mgr,
+		recMgr:    recMgr,
+		recEngine: recEngine,
+		mux:       http.NewServeMux(),
+		sessions:  make(map[string]time.Time),
 	}
 	s.routes()
 	return s
@@ -74,6 +79,16 @@ func (s *Server) routes() {
 		}
 		s.requireAuth(s.handleRecordingStream)(w, r)
 	})
+
+	// Settings & Management REST APIs
+	s.mux.HandleFunc("GET /api/settings", s.requireAuth(s.handleGetSettings))
+	s.mux.HandleFunc("POST /api/settings/cameras", s.requireAuth(s.handleAddCamera))
+	s.mux.HandleFunc("PUT /api/settings/cameras/{id}", s.requireAuth(s.handleUpdateCamera))
+	s.mux.HandleFunc("DELETE /api/settings/cameras/{id}", s.requireAuth(s.handleDeleteCamera))
+	s.mux.HandleFunc("POST /api/settings/cameras/test", s.requireAuth(s.handleTestCamera))
+	s.mux.HandleFunc("PUT /api/settings/recording", s.requireAuth(s.handleUpdateRecordingSettings))
+	s.mux.HandleFunc("PUT /api/settings/security", s.requireAuth(s.handleUpdateSecuritySettings))
+	s.mux.HandleFunc("GET /api/settings/storage", s.requireAuth(s.handleGetStorageStatus))
 
 	// HLS stream segments — served from filesystem (runtime files)
 	streamsDir := http.Dir(s.mgr.StreamsDir())
@@ -630,6 +645,396 @@ func triggerHTTPAlarm(method, targetURL, username, password string) error {
 	}
 
 	return nil
+}
+
+// handleGetSettings returns complete configuration and storage status.
+func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	disk, _ := recorder.GetDiskUsage(s.cfg.Recordings.Dir)
+
+	resp := map[string]interface{}{
+		"cameras":   s.cfg.Cameras,
+		"recording": s.cfg.Recordings,
+		"storage":   disk,
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleAddCamera creates a new camera and starts its live stream and recorder.
+func (s *Server) handleAddCamera(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	var cam config.Camera
+	if err := json.NewDecoder(r.Body).Decode(&cam); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "Format data kamera tidak valid: " + err.Error(),
+		})
+		return
+	}
+
+	cam.Name = strings.TrimSpace(cam.Name)
+	if cam.Name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "Nama kamera wajib diisi",
+		})
+		return
+	}
+
+	cam.URL = strings.TrimSpace(cam.URL)
+	cam.OnvifURL = strings.TrimSpace(cam.OnvifURL)
+	if cam.URL == "" && cam.OnvifURL == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "URL RTSP atau ONVIF wajib diisi",
+		})
+		return
+	}
+
+	cam.ID = strings.TrimSpace(cam.ID)
+	if cam.ID == "" {
+		cam.ID = fmt.Sprintf("cam_%d", time.Now().Unix())
+	}
+	// Sanitize ID: lowercase alphanumeric + underscore/dash
+	cam.ID = strings.ToLower(cam.ID)
+	cam.ID = strings.ReplaceAll(cam.ID, " ", "_")
+
+	if cam.Record == nil {
+		recTrue := true
+		cam.Record = &recTrue
+	}
+
+	// Add to stream manager
+	if err := s.mgr.AddCamera(r.Context(), cam); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	// Add to recorder engine
+	if s.recEngine != nil {
+		s.recEngine.AddCamera(r.Context(), cam)
+	}
+
+	// Save configuration to file
+	if s.cfg.ConfigPath != "" {
+		if err := config.Save(s.cfg.ConfigPath, s.cfg); err != nil {
+			log.Printf("[SETTINGS] Warning: failed to save config.yaml: %v", err)
+		}
+	}
+
+	writeJSON(w, http.StatusCreated, map[string]interface{}{
+		"success": true,
+		"camera":  cam,
+	})
+}
+
+// handleUpdateCamera updates an existing camera's config and restarts its stream/recorder.
+func (s *Server) handleUpdateCamera(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	camID := r.PathValue("id")
+	if camID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "ID kamera wajib diisi",
+		})
+		return
+	}
+
+	var cam config.Camera
+	if err := json.NewDecoder(r.Body).Decode(&cam); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "Format data kamera tidak valid: " + err.Error(),
+		})
+		return
+	}
+
+	cam.ID = camID
+	cam.Name = strings.TrimSpace(cam.Name)
+	if cam.Name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "Nama kamera wajib diisi",
+		})
+		return
+	}
+
+	cam.URL = strings.TrimSpace(cam.URL)
+	cam.OnvifURL = strings.TrimSpace(cam.OnvifURL)
+	if cam.URL == "" && cam.OnvifURL == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "URL RTSP atau ONVIF wajib diisi",
+		})
+		return
+	}
+
+	if cam.Record == nil {
+		recTrue := true
+		cam.Record = &recTrue
+	}
+
+	if err := s.mgr.UpdateCamera(r.Context(), cam); err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	if s.recEngine != nil {
+		s.recEngine.UpdateCamera(r.Context(), cam)
+	}
+
+	if s.cfg.ConfigPath != "" {
+		if err := config.Save(s.cfg.ConfigPath, s.cfg); err != nil {
+			log.Printf("[SETTINGS] Warning: failed to save config.yaml: %v", err)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"camera":  cam,
+	})
+}
+
+// handleDeleteCamera stops and removes a camera from both manager and config.
+func (s *Server) handleDeleteCamera(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	camID := r.PathValue("id")
+	if camID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "ID kamera wajib diisi",
+		})
+		return
+	}
+
+	if err := s.mgr.RemoveCamera(camID); err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	if s.recEngine != nil {
+		s.recEngine.RemoveCamera(camID)
+	}
+
+	if s.cfg.ConfigPath != "" {
+		if err := config.Save(s.cfg.ConfigPath, s.cfg); err != nil {
+			log.Printf("[SETTINGS] Warning: failed to save config.yaml: %v", err)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Kamera berhasil dihapus",
+	})
+}
+
+// handleTestCamera tests connectivity to a camera's RTSP stream using FFmpeg probe.
+func (s *Server) handleTestCamera(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	var req struct {
+		URL      string `json:"url"`
+		OnvifURL string `json:"onvif_url"`
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "Format request tidak valid: " + err.Error(),
+		})
+		return
+	}
+
+	targetURL := strings.TrimSpace(req.URL)
+	if targetURL == "" && req.OnvifURL != "" {
+		discovered, err := onvif.GetStreamURI(req.OnvifURL, req.Username, req.Password)
+		if err != nil {
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"success": false,
+				"error":   fmt.Sprintf("ONVIF Discovery gagal: %v", err),
+			})
+			return
+		}
+		targetURL = discovered
+	}
+
+	if targetURL == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "URL RTSP atau ONVIF tidak boleh kosong",
+		})
+		return
+	}
+
+	// Probe RTSP with FFmpeg (timeout 5s)
+	probeCtx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(probeCtx, "ffmpeg",
+		"-hide_banner",
+		"-loglevel", "error",
+		"-rtsp_transport", "tcp",
+		"-timeout", "4000000",
+		"-i", targetURL,
+		"-t", "1",
+		"-f", "null",
+		"-",
+	)
+	var errBuf strings.Builder
+	cmd.Stderr = &errBuf
+
+	if err := cmd.Run(); err != nil {
+		errMsg := strings.TrimSpace(errBuf.String())
+		if errMsg == "" {
+			errMsg = err.Error()
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Gagal terhubung ke RTSP stream: %s", errMsg),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Stream RTSP berhasil terhubung dan dapat dibaca!",
+	})
+}
+
+// handleUpdateRecordingSettings updates NVR recording preferences.
+func (s *Server) handleUpdateRecordingSettings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	var req struct {
+		Enabled        bool `json:"enabled"`
+		SegmentMinutes int  `json:"segment_minutes"`
+		RetentionDays  int  `json:"retention_days"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "Format request tidak valid: " + err.Error(),
+		})
+		return
+	}
+
+	if req.SegmentMinutes <= 0 {
+		req.SegmentMinutes = 5
+	}
+	if req.RetentionDays <= 0 {
+		req.RetentionDays = 7
+	}
+
+	s.cfg.Recordings.Enabled = req.Enabled
+	s.cfg.Recordings.SegmentMinutes = req.SegmentMinutes
+	s.cfg.Recordings.RetentionDays = req.RetentionDays
+
+	if s.cfg.ConfigPath != "" {
+		if err := config.Save(s.cfg.ConfigPath, s.cfg); err != nil {
+			log.Printf("[SETTINGS] Warning: failed to save config: %v", err)
+		}
+	}
+
+	if s.recEngine != nil {
+		s.recEngine.RestartAll(r.Context())
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success":   true,
+		"recording": s.cfg.Recordings,
+		"message":   "Pengaturan rekaman berhasil disimpan",
+	})
+}
+
+// handleUpdateSecuritySettings updates the dashboard login password.
+func (s *Server) handleUpdateSecuritySettings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "Format request tidak valid: " + err.Error(),
+		})
+		return
+	}
+
+	// If current password is set, verify
+	if s.cfg.Auth.Enabled && s.cfg.Auth.Password != "" {
+		if req.CurrentPassword != s.cfg.Auth.Password {
+			writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+				"success": false,
+				"error":   "Kata sandi saat ini tidak cocok",
+			})
+			return
+		}
+	}
+
+	if len(req.NewPassword) < 4 {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{
+			"success": false,
+			"error":   "Kata sandi baru minimal 4 karakter",
+		})
+		return
+	}
+
+	s.cfg.Auth.Password = req.NewPassword
+	s.cfg.Auth.Enabled = true
+
+	if s.cfg.ConfigPath != "" {
+		if err := config.Save(s.cfg.ConfigPath, s.cfg); err != nil {
+			log.Printf("[SETTINGS] Warning: failed to save config: %v", err)
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Kata sandi berhasil diperbarui",
+	})
+}
+
+// handleGetStorageStatus returns current disk capacity.
+func (s *Server) handleGetStorageStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	disk, err := recorder.GetDiskUsage(s.cfg.Recordings.Dir)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]interface{}{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, disk)
 }
 
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
