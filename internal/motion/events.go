@@ -93,15 +93,18 @@ func (em *EventManager) RecordMotion(camID string, t time.Time, changePct float6
 
 // GetEvents returns all motion events for the specified camera and date (YYYY-MM-DD).
 func (em *EventManager) GetEvents(camID, date string) []Event {
+	localToday := time.Now().In(em.tzLoc).Format("2006-01-02")
+	isToday := (date == localToday)
+
 	em.mu.RLock()
 	cacheKey := fmt.Sprintf("%s:%s", camID, date)
-	if events, ok := em.cache[cacheKey]; ok {
+	if events, ok := em.cache[cacheKey]; ok && !isToday {
 		em.mu.RUnlock()
 		return events
 	}
 	em.mu.RUnlock()
 
-	// Load from disk
+	// Load from disk with alias and single-camera resolution
 	events := em.loadEventsFromDisk(camID, date)
 
 	em.mu.Lock()
@@ -119,31 +122,91 @@ func (em *EventManager) getEventFilePath(camID, date string) string {
 	return filepath.Join(baseDir, camID, fmt.Sprintf("events_%s.json", date))
 }
 
-func (em *EventManager) loadEventsFromDisk(camID, date string) []Event {
-	path := em.getEventFilePath(camID, date)
+func readEventsFile(path string) []Event {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return []Event{}
+		return nil
 	}
-
 	var events []Event
 	if err := json.Unmarshal(data, &events); err != nil {
-		return []Event{}
+		return nil
 	}
 	return events
 }
 
+func (em *EventManager) loadEventsFromDisk(camID, date string) []Event {
+	baseDir := em.cfg.Recordings.Dir
+	if baseDir == "" {
+		baseDir = "./rekaman_cctv"
+	}
+
+	// 1. Direct path: baseDir/camID/events_date.json
+	path := em.getEventFilePath(camID, date)
+	if events := readEventsFile(path); len(events) > 0 {
+		return events
+	}
+
+	// 2. Root path: baseDir/events_date.json
+	rootPath := filepath.Join(baseDir, fmt.Sprintf("events_%s.json", date))
+	if events := readEventsFile(rootPath); len(events) > 0 {
+		return events
+	}
+
+	// 3. Check configured camera mappings (ID <-> ShinobiID)
+	if em.cfg != nil {
+		for _, cam := range em.cfg.Cameras {
+			if cam.ID == camID && cam.ShinobiID != "" {
+				p := filepath.Join(baseDir, cam.ShinobiID, fmt.Sprintf("events_%s.json", date))
+				if events := readEventsFile(p); len(events) > 0 {
+					return events
+				}
+			}
+			if cam.ShinobiID == camID {
+				p := filepath.Join(baseDir, cam.ID, fmt.Sprintf("events_%s.json", date))
+				if events := readEventsFile(p); len(events) > 0 {
+					return events
+				}
+			}
+		}
+
+		// 4. Single camera fallback
+		if len(em.cfg.Cameras) == 1 {
+			primaryCam := em.cfg.Cameras[0]
+			candidates := []string{primaryCam.ID, primaryCam.ShinobiID, "default"}
+			for _, cid := range candidates {
+				if cid == "" || cid == camID {
+					continue
+				}
+				p := filepath.Join(baseDir, cid, fmt.Sprintf("events_%s.json", date))
+				if events := readEventsFile(p); len(events) > 0 {
+					return events
+				}
+			}
+		}
+	}
+
+	// 5. Fallback search: any subfolder in baseDir for events_date.json
+	matches, _ := filepath.Glob(filepath.Join(baseDir, "*", fmt.Sprintf("events_%s.json", date)))
+	for _, m := range matches {
+		if events := readEventsFile(m); len(events) > 0 {
+			return events
+		}
+	}
+
+	return []Event{}
+}
+
 func (em *EventManager) appendEventLocked(camID string, event *Event) {
-	cacheKey := fmt.Sprintf("%s:%s", camID, event.Date)
 	events := em.loadEventsFromDisk(camID, event.Date)
 	events = append(events, *event)
-	em.cache[cacheKey] = events
+	// Reset cache so queries with alias IDs get updated
+	em.cache = make(map[string][]Event)
+	em.cache[fmt.Sprintf("%s:%s", camID, event.Date)] = events
 
 	em.writeEventsToDisk(camID, event.Date, events)
 }
 
 func (em *EventManager) saveActiveEventLocked(camID string, active *Event) {
-	cacheKey := fmt.Sprintf("%s:%s", camID, active.Date)
 	events := em.loadEventsFromDisk(camID, active.Date)
 	if len(events) > 0 {
 		// Update last element
@@ -151,7 +214,8 @@ func (em *EventManager) saveActiveEventLocked(camID string, active *Event) {
 	} else {
 		events = append(events, *active)
 	}
-	em.cache[cacheKey] = events
+	em.cache = make(map[string][]Event)
+	em.cache[fmt.Sprintf("%s:%s", camID, active.Date)] = events
 
 	em.writeEventsToDisk(camID, active.Date, events)
 }

@@ -472,8 +472,13 @@ func (s *Server) handleRecordingTimeline(w http.ResponseWriter, r *http.Request)
 	clips := s.recMgr.GetClips(camID, date)
 
 	var events []motion.Event
-	if s.motionEvents != nil && camID != "" && date != "" {
-		events = s.motionEvents.GetEvents(camID, date)
+	if s.motionEvents != nil && date != "" {
+		if camID != "" {
+			events = s.motionEvents.GetEvents(camID, date)
+		}
+		if len(events) == 0 && len(clips) > 0 && clips[0].CameraID != "" && clips[0].CameraID != camID {
+			events = s.motionEvents.GetEvents(clips[0].CameraID, date)
+		}
 	}
 	if events == nil {
 		events = []motion.Event{}

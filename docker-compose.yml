@@ -1,14 +1,16 @@
 services:
   cctv-monitor:
+    build: .
     image: llabbs/cctv-monitor:latest
     container_name: cctv-monitor
     restart: unless-stopped
-    # Akses root untuk membaca volume rekaman host NVR (aman karena volume di-mount :ro)
+    # Akses root untuk menulis & membaca rekaman ke storage host
     user: "0:0"
     volumes:
-      - ./config.yaml:/app/config.yaml:ro
-      # Mount folder storage rekaman Shinobi di host (read-only agar aman)
-      - /mnt/nvr_storage:/app/recordings:ro
+      # Mount config (read-write agar bisa simpan pengaturan dari web)
+      - ./config.yaml:/app/config.yaml
+      # Mount folder storage rekaman (read-write untuk built-in NVR & deteksi gerakan)
+      - /mnt/nvr_storage:/app/recordings
     environment:
       # Path folder rekaman di dalam container
       - RECORDINGS_DIR=/app/recordings

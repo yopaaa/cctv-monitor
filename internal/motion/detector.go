@@ -5,7 +5,9 @@ import (
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
+	"log"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,17 +27,30 @@ type SensitivityConfig struct {
 
 var sensitivities = map[string]SensitivityConfig{
 	"high": {
-		PixelDeltaThreshold: 20,
-		MinChangePercentage: 2.5,
+		PixelDeltaThreshold: 15,
+		MinChangePercentage: 1.0,
 	},
 	"medium": {
-		PixelDeltaThreshold: 25,
-		MinChangePercentage: 4.0,
+		PixelDeltaThreshold: 20,
+		MinChangePercentage: 2.0,
 	},
 	"low": {
-		PixelDeltaThreshold: 35,
-		MinChangePercentage: 7.0,
+		PixelDeltaThreshold: 30,
+		MinChangePercentage: 4.0,
 	},
+}
+
+// NormalizeSensitivity maps various sensitivity strings (including Indonesian aliases) to canonical keys ("low", "medium", "high").
+func NormalizeSensitivity(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	switch s {
+	case "high", "tinggi":
+		return "high"
+	case "low", "rendah":
+		return "low"
+	default:
+		return "medium"
+	}
 }
 
 // Detector performs lightweight, low-CPU pixel difference motion detection across camera frames.
@@ -51,7 +66,7 @@ type Detector struct {
 func NewDetector(cfg *config.Config, eventMgr *EventManager) *Detector {
 	sens := "medium"
 	if cfg != nil && cfg.Motion.Sensitivity != "" {
-		sens = cfg.Motion.Sensitivity
+		sens = NormalizeSensitivity(cfg.Motion.Sensitivity)
 	}
 	return &Detector{
 		cfg:         cfg,
@@ -61,13 +76,12 @@ func NewDetector(cfg *config.Config, eventMgr *EventManager) *Detector {
 	}
 }
 
-// SetSensitivity updates the motion detection sensitivity ("low", "medium", "high").
+// SetSensitivity updates the motion detection sensitivity ("low", "medium", "high", or Indonesian aliases).
 func (d *Detector) SetSensitivity(s string) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if _, ok := sensitivities[s]; ok {
-		d.sensitivity = s
-	}
+	d.sensitivity = NormalizeSensitivity(s)
+	log.Printf("[MOTION] Sensitivitas deteksi gerakan diatur ke: %s", d.sensitivity)
 }
 
 // GetSensitivity returns the current sensitivity level.
@@ -104,7 +118,11 @@ func (d *Detector) ProcessFrame(camID, imagePath string) (bool, float64) {
 		return false, 0
 	}
 
-	sens := sensitivities[d.sensitivity]
+	normSens := NormalizeSensitivity(d.sensitivity)
+	sens, ok := sensitivities[normSens]
+	if !ok {
+		sens = sensitivities["medium"]
+	}
 
 	// Compute pixel differences
 	changedPixels := 0
@@ -121,6 +139,10 @@ func (d *Detector) ProcessFrame(camID, imagePath string) (bool, float64) {
 	}
 
 	changePct := float64(changedPixels) / float64(totalPixels) * 100.0
+
+	if changePct >= 0.5 {
+		log.Printf("[MOTION-DEBUG][%s] Evaluasi frame: visual delta %.2f%% (level: %s, threshold: %.2f%%)", camID, changePct, normSens, sens.MinChangePercentage)
+	}
 
 	if changePct >= sens.MinChangePercentage {
 		d.eventMgr.RecordMotion(camID, time.Now(), changePct)

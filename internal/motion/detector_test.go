@@ -91,3 +91,72 @@ func TestMotionDetection(t *testing.T) {
 		t.Errorf("Expected at least 1 motion event, got 0")
 	}
 }
+
+func TestNormalizeSensitivity(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"high", "high"},
+		{"High", "high"},
+		{"tinggi", "high"},
+		{"TINGGI", "high"},
+		{"medium", "medium"},
+		{"sedang", "medium"},
+		{"low", "low"},
+		{"rendah", "low"},
+		{"", "medium"},
+		{"unknown", "medium"},
+	}
+
+	for _, tt := range tests {
+		got := NormalizeSensitivity(tt.input)
+		if got != tt.expected {
+			t.Errorf("NormalizeSensitivity(%q) = %q; want %q", tt.input, got, tt.expected)
+		}
+	}
+}
+
+func TestEventManagerAliasResolution(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "test_event_alias_*")
+	if err != nil {
+		t.Fatalf("MkdirTemp: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	cfg := &config.Config{
+		Recordings: config.RecordingsConfig{
+			Dir:                 tmpDir,
+			TimezoneOffsetHours: 7,
+		},
+		Cameras: []config.Camera{
+			{
+				ID:        "cam1",
+				Name:      "Kamera Depan",
+				ShinobiID: "dxniCFHQYl",
+			},
+		},
+	}
+
+	eventMgr := NewEventManager(cfg)
+	testDate := "2026-10-26"
+	eventMgr.RecordMotion("cam1", time.Date(2026, 10, 26, 14, 30, 0, 0, time.FixedZone("WIB", 7*3600)), 5.5)
+
+	// Direct query with configured ID
+	ev1 := eventMgr.GetEvents("cam1", testDate)
+	if len(ev1) == 0 {
+		t.Errorf("Failed to retrieve events using 'cam1'")
+	}
+
+	// Query with Shinobi ID alias
+	ev2 := eventMgr.GetEvents("dxniCFHQYl", testDate)
+	if len(ev2) == 0 {
+		t.Errorf("Failed to retrieve events using Shinobi ID alias 'dxniCFHQYl'")
+	}
+
+	// Single camera fallback with "default"
+	ev3 := eventMgr.GetEvents("default", testDate)
+	if len(ev3) == 0 {
+		t.Errorf("Failed to retrieve events using single camera fallback 'default'")
+	}
+}

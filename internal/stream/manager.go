@@ -182,6 +182,9 @@ func (m *Manager) startCameraLocked(ctx context.Context, cam config.Camera) {
 		baseCtx = context.Background()
 	}
 
+	camDir := filepath.Join(m.cfg.Server.StreamsDir, cam.ID)
+	cleanStaleSegments(camDir)
+
 	camCtx, loopCancel := context.WithCancel(baseCtx)
 	proc := &cameraProcess{
 		camera:     cam,
@@ -206,6 +209,7 @@ func (m *Manager) stopCameraLocked(camID string) {
 		proc.status = "offline"
 		proc.mu.Unlock()
 		delete(m.processes, camID)
+		cleanStaleSegments(filepath.Join(m.cfg.Server.StreamsDir, camID))
 		log.Printf("[%s] Stream stopped and removed", camID)
 	}
 }
@@ -250,6 +254,7 @@ func (m *Manager) runCameraLoop(ctx context.Context, proc *cameraProcess) {
 		// --- Step 2: Start FFmpeg ---
 		log.Printf("[%s] Starting FFmpeg stream...", camID)
 		outPath := filepath.Join(m.cfg.Server.StreamsDir, camID, "index.m3u8")
+		cleanStaleSegments(filepath.Dir(outPath))
 
 		ffCtx, ffCancel := context.WithCancel(ctx)
 		proc.mu.Lock()
@@ -394,6 +399,98 @@ func (m *Manager) GetCamera(id string) (config.Camera, bool) {
 	return config.Camera{}, false
 }
 
+// cleanStaleSegments removes old .ts segment files and stale playlists from a camera stream directory.
+func cleanStaleSegments(dir string) {
+	files, err := filepath.Glob(filepath.Join(dir, "seg_*.ts"))
+	if err == nil {
+		for _, f := range files {
+			_ = os.Remove(f)
+		}
+	}
+	_ = os.Remove(filepath.Join(dir, "index.m3u8"))
+	_ = os.Remove(filepath.Join(dir, "thumbnail.tmp.jpg"))
+}
+
+// getLatestCompletedSegment returns the path of the latest completed .ts segment.
+// It prioritizes reading index.m3u8 to guarantee chronological sequence across restarts/large segment numbers.
+func (m *Manager) getLatestCompletedSegment(dir string) string {
+	// Strategy 1: Read index.m3u8 playlist written by FFmpeg
+	indexPath := filepath.Join(dir, "index.m3u8")
+	if data, err := os.ReadFile(indexPath); err == nil {
+		lines := strings.Split(string(data), "\n")
+		var segFiles []string
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line != "" && !strings.HasPrefix(line, "#") && strings.HasSuffix(line, ".ts") {
+				segFiles = append(segFiles, line)
+			}
+		}
+
+		// In live HLS, the last segment in the playlist might still be appending.
+		// If 2 or more segments exist, segFiles[len-2] is guaranteed completed.
+		// If only 1 segment exists, segFiles[0] is the only candidate.
+		if len(segFiles) >= 2 {
+			cand := filepath.Join(dir, segFiles[len(segFiles)-2])
+			if fi, err := os.Stat(cand); err == nil && fi.Size() > 0 {
+				return cand
+			}
+		} else if len(segFiles) == 1 {
+			cand := filepath.Join(dir, segFiles[0])
+			if fi, err := os.Stat(cand); err == nil && fi.Size() > 0 {
+				return cand
+			}
+		}
+	}
+
+	// Strategy 2: Fallback to scanning seg_*.ts by modification time (ModTime)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+
+	type fileInfo struct {
+		path    string
+		modTime time.Time
+		size    int64
+	}
+
+	var recentFiles []fileInfo
+	now := time.Now()
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasPrefix(entry.Name(), "seg_") || !strings.HasSuffix(entry.Name(), ".ts") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil || info.Size() == 0 {
+			continue
+		}
+		// Ignore stale orphaned files modified more than 60 seconds ago
+		if now.Sub(info.ModTime()) > 60*time.Second {
+			continue
+		}
+		recentFiles = append(recentFiles, fileInfo{
+			path:    filepath.Join(dir, entry.Name()),
+			modTime: info.ModTime(),
+			size:    info.Size(),
+		})
+	}
+
+	if len(recentFiles) == 0 {
+		return ""
+	}
+
+	// Sort ascending by ModTime (oldest to newest)
+	sort.Slice(recentFiles, func(i, j int) bool {
+		return recentFiles[i].modTime.Before(recentFiles[j].modTime)
+	})
+
+	if len(recentFiles) >= 2 {
+		return recentFiles[len(recentFiles)-2].path
+	}
+	return recentFiles[0].path
+}
+
 // thumbnailLoop periodically extracts a JPEG thumbnail from the latest completed HLS segment.
 // This runs independently from the main stream loop.
 // The thumbnail is saved as thumbnail.jpg in the camera's stream directory atomically.
@@ -409,6 +506,8 @@ func (m *Manager) thumbnailLoop(ctx context.Context, proc *cameraProcess) {
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 
+	var lastProcessedSegment string
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -419,17 +518,9 @@ func (m *Manager) thumbnailLoop(ctx context.Context, proc *cameraProcess) {
 				continue
 			}
 
-			// Find .ts segment files
-			segments, err := filepath.Glob(filepath.Join(dir, "seg_*.ts"))
-			if err != nil || len(segments) == 0 {
+			target := m.getLatestCompletedSegment(dir)
+			if target == "" || target == lastProcessedSegment {
 				continue
-			}
-			sort.Strings(segments)
-
-			// Pick completed segment (avoiding the one currently being written by FFmpeg)
-			target := segments[len(segments)-1]
-			if len(segments) >= 2 {
-				target = segments[len(segments)-2]
 			}
 
 			// Extract 1 frame as JPEG to a temp file, then atomic rename
@@ -444,15 +535,18 @@ func (m *Manager) thumbnailLoop(ctx context.Context, proc *cameraProcess) {
 			cmd.Stdout = nil
 			cmd.Stderr = nil
 			if err := cmd.Run(); err != nil {
-				log.Printf("[%s] Thumbnail extraction failed: %v", camID, err)
+				log.Printf("[%s] Thumbnail extraction failed for %s: %v", camID, filepath.Base(target), err)
 			} else {
-				_ = os.Rename(tempThumbPath, thumbPath)
+				if err := os.Rename(tempThumbPath, thumbPath); err == nil {
+					lastProcessedSegment = target
 
-				m.mu.RLock()
-				fp := m.frameProcessor
-				m.mu.RUnlock()
-				if fp != nil {
-					go fp.ProcessFrame(camID, thumbPath)
+					m.mu.RLock()
+					fp := m.frameProcessor
+					m.mu.RUnlock()
+					if fp != nil {
+						// Process synchronously to maintain strict frame order and avoid race conditions
+						fp.ProcessFrame(camID, thumbPath)
+					}
 				}
 			}
 		}
