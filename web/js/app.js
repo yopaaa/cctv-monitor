@@ -1372,16 +1372,20 @@
             if (recVideoError) {
                 var err = recVideoPlayer.error;
                 var msg = "⚠️ Gagal memutar video rekaman.";
+                var detail = "Pastikan file ada di server dan container memiliki izin akses baca.";
                 if (err) {
                     if (err.code === 1) {
                         // MEDIA_ERR_ABORTED: Normal when user switches video
                         return;
                     }
                     else if (err.code === 2) msg = "⚠️ Kesalahan jaringan saat memuat video.";
-                    else if (err.code === 3) msg = "⚠️ Format video tidak didukung oleh browser.";
+                    else if (err.code === 3) {
+                        msg = "⚠️ Klip rekaman ini hanya berisi audio atau format video tidak lengkap.";
+                        detail = "Klip rekaman lama ini terputus aliran videonya dari kamera. Rekaman dengan video normal berukuran >15 MB.";
+                    }
                     else if (err.code === 4) msg = "⚠️ File video tidak ditemukan atau izin akses ditolak (401/404).";
                 }
-                recVideoError.innerHTML = '<span>' + msg + '</span><br><small style="color:#aaa;">Pastikan file ada di server dan container memiliki izin akses baca.</small>';
+                recVideoError.innerHTML = '<span>' + msg + '</span><br><small style="color:#aaa;">' + detail + '</small>';
                 recVideoError.classList.remove("hidden");
             }
         });

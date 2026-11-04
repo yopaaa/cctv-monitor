@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -221,13 +222,98 @@ func (e *Engine) runRecordLoop(ctx context.Context, proc *recordProcess, camDir 
 
 		log.Printf("[RECORDER][%s] Recording stream into %s (segment: %ds)...", camID, outPattern, segmentSec)
 
-		err := e.runFFmpegRecord(ctx, rtspURL, outPattern, segmentSec)
+		sessionCtx, sessionCancel := context.WithCancel(ctx)
+
+		// Start background health watchdog to detect audio-only / video-starved streams and auto-recover
+		go e.watchdogRecordingHealth(sessionCtx, camID, camDir, sessionCancel)
+
+		err := e.runFFmpegRecord(sessionCtx, rtspURL, outPattern, segmentSec)
+		sessionCancel() // Ensure watchdog stops when FFmpeg terminates
+
 		if ctx.Err() != nil {
 			return
 		}
 
 		log.Printf("[RECORDER][%s] Recording process ended: %v — restarting in 5s...", camID, err)
 		sleepOrCancel(ctx, 5*time.Second)
+	}
+}
+
+// watchdogRecordingHealth monitors active recording files. If a file is growing at audio-only speeds
+// (< 20 KB/sec, meaning 64kbps AAC without video frames) for >= 60 seconds, it cancels the session to reconnect.
+func (e *Engine) watchdogRecordingHealth(ctx context.Context, camID, camDir string, cancel context.CancelFunc) {
+	// Give FFmpeg 45 seconds initial grace period to establish RTSP connection and start writing first segment
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(45 * time.Second):
+	}
+
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			entries, err := os.ReadDir(camDir)
+			if err != nil || len(entries) == 0 {
+				continue
+			}
+
+			var newestName string
+			var newestMod time.Time
+			var newestSize int64
+
+			now := time.Now()
+			for _, entry := range entries {
+				if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".mp4") {
+					continue
+				}
+				info, err := entry.Info()
+				if err != nil {
+					continue
+				}
+				if info.ModTime().After(newestMod) {
+					newestMod = info.ModTime()
+					newestName = entry.Name()
+					newestSize = info.Size()
+				}
+			}
+
+			if newestName == "" {
+				continue
+			}
+
+			// File must have been modified within the last 15 seconds to be considered active
+			if now.Sub(newestMod) > 15*time.Second {
+				continue
+			}
+
+			// Parse file start time from filename (%Y-%m-%dT%H-%M-%S.mp4)
+			// e.g. 2026-11-04T16-00-00.mp4
+			fileBase := strings.TrimSuffix(newestName, ".mp4")
+			t, err := time.Parse("2006-01-02T15-04-05", fileBase)
+			if err != nil {
+				continue
+			}
+
+			ageSec := int(now.Sub(t).Seconds())
+			// Only check files that have been recording for at least 60 seconds
+			if ageSec >= 60 {
+				// Audio only at 64kbps produces ~8 KB/sec (480 KB in 60s, 960 KB in 120s).
+				// Video (720p/1080p H.264) produces at least 40 KB/sec to 100 KB/sec (> 2.4 MB in 60s).
+				// If average rate is < 20 KB/sec, video stream is missing or stalled!
+				avgKBps := float64(newestSize) / float64(ageSec*1024)
+				if avgKBps < 20.0 {
+					log.Printf("[RECORDER][%s] PERINGATAN: Rekaman %s hanya berisi audio (rata-rata: %.1f KB/s, ukuran: %d bytes dalam %ds). Me-restart FFmpeg untuk memulihkan video...",
+						camID, newestName, avgKBps, newestSize, ageSec)
+					cancel()
+					return
+				}
+			}
+		}
 	}
 }
 
@@ -238,8 +324,16 @@ func (e *Engine) runFFmpegRecord(ctx context.Context, rtspURL, outPattern string
 		"-loglevel", "warning",
 		// Network connection settings
 		"-rtsp_transport", "tcp",
-		"-timeout", "5000000", // 5 seconds timeout
+		"-rtsp_flags", "prefer_tcp",
+		"-timeout", "5000000", // 5 seconds socket timeout (microseconds) for RTSP
+		"-buffer_size", "2048000", // 2MB socket buffer to prevent dropping large video keyframes
+		"-probesize", "10000000",  // 10MB probe to ensure video and audio streams are fully analyzed
+		"-analyzeduration", "10000000", // 10s analysis duration for slow camera keyframes
+		"-fflags", "+genpts+discardcorrupt", // Generate missing PTS and discard corrupt packets
 		"-i", rtspURL,
+		// Explicit stream mapping: Video (stream 0:v:0) is required, Audio (stream 0:a:0?) is optional
+		"-map", "0:v:0",
+		"-map", "0:a?",
 		// Stream copy for video (zero CPU re-encoding)
 		"-c:v", "copy",
 		// Encode audio to standard AAC (fixes missing extradata/AudioSpecificConfig from V380 RTSP)
@@ -252,6 +346,7 @@ func (e *Engine) runFFmpegRecord(ctx context.Context, rtspURL, outPattern string
 		"-reset_timestamps", "1",
 		"-strftime", "1",
 		"-segment_format", "mp4",
+		"-avoid_negative_ts", "make_zero",
 		// Faststart for instant web streaming
 		"-movflags", "+faststart",
 		outPattern,

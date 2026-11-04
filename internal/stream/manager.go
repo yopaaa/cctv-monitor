@@ -292,9 +292,15 @@ func (m *Manager) runFFmpeg(ctx context.Context, camID, rtspURL, outPath string,
 		"-loglevel", "warning",
 		// Input options
 		"-rtsp_transport", "tcp",
+		"-rtsp_flags", "prefer_tcp",
 		"-timeout", "5000000", // 5 seconds connection timeout (microseconds)
+		"-buffer_size", "2048000",
+		"-probesize", "10000000",
+		"-analyzeduration", "10000000",
+		"-fflags", "+genpts+discardcorrupt",
 		"-i", rtspURL,
 		// Output options — copy codec, no re-encoding
+		"-map", "0:v:0",
 		"-c:v", "copy",
 		"-an", // Disable audio (remove this line if you want audio)
 		// HLS output
